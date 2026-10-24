@@ -1,0 +1,12 @@
+.DS_Store
+
+# Xcode and SwiftPM
+xcuserdata/
+DerivedData/
+build/
+.build/
+.swiftpm/
+*.xcuserstate
+
+# API keys and signing team (copy Config/Secrets.example.xcconfig)
+Config/Secrets.xcconfig

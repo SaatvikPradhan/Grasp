@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>GEMINI_API_KEY</key>
+	<string>$(GEMINI_API_KEY)</string>
+	<key>ELEVENLABS_API_KEY</key>
+	<string>$(ELEVENLABS_API_KEY)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Grasp receives what your iPhone camera sees.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_grasp-link._tcp</string>
+		<string>_grasp-link._udp</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Grasp sends what the camera sees to your Mac.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_grasp-link._tcp</string>
+		<string>_grasp-link._udp</string>
+	</array>
+</dict>
+</plist>

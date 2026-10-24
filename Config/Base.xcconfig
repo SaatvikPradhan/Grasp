@@ -1,0 +1,10 @@
+// Settings shared by every target. No secrets here: they go in Secrets.xcconfig,
+// which git ignores. Copy Secrets.example.xcconfig to start.
+
+GEMINI_API_KEY =
+ELEVENLABS_API_KEY =
+
+// The Mac app signs to run locally until Secrets.xcconfig sets a team.
+CODE_SIGN_IDENTITY[sdk=macosx*] = -
+
+#include? "Secrets.xcconfig"
