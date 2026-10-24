@@ -10,6 +10,9 @@ GRASP.md is the HackPSU brief and the source of truth. Update it when a decision
 - Mac app from the command line: `xcodebuild -project Grasp.xcodeproj -scheme GraspMac -destination 'platform=macOS' build`
 - iPhone app compile check: `xcodebuild -project Grasp.xcodeproj -scheme GraspPhone -destination 'generic/platform=iOS Simulator' build`
 - Shared logic tests: `cd GraspKit && swift test`
+- Live Gemini test (reads `Fixtures/contract-photo.jpg`): `GEMINI_API_KEY=... swift test --filter LiveGemini` from `GraspKit/`. Skipped without the key.
+- Test the phone link without an iPhone: run GraspPhone in the simulator; it sends numbered test frames.
+- Printable demo props live in `props/`.
 - Keys: copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig` (git-ignored) and fill it in. Read them in code with `APIKeys.gemini` / `APIKeys.elevenLabs`.
 
 ## Conventions

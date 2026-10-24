@@ -9,6 +9,8 @@ struct ChartCard: Identifiable, Equatable {
     var loan: LoanTerms
     /// The term the salesperson pitched, which every other term is compared against.
     var pitchTermMonths: Int
+    /// Where the numbers came from, shown under the chart.
+    var source = "Demo numbers"
 
     var frame: CGRect {
         CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
@@ -137,6 +139,16 @@ final class CanvasModel {
         } else {
             cards[index].center = clamped(CGPoint(x: p.x + grip.offset.width, y: p.y + grip.offset.height))
         }
+    }
+
+    // MARK: Paper
+
+    /// Puts the loan read off a contract onto the loan card.
+    func showOffer(_ reading: OfferReading) {
+        guard let loan = reading.loan, let index = cards.indices.first else { return }
+        cards[index].loan = loan
+        cards[index].pitchTermMonths = loan.termMonths
+        cards[index].source = "Read from the contract"
     }
 
     // MARK: Mouse and keyboard

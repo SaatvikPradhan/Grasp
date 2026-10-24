@@ -13,7 +13,7 @@ struct ChartCardView: View {
     private var maxTotal: Double { loan.with(termMonths: CanvasModel.termRange.upperBound).totalPaid }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("CAR LOAN · TRUE COST")
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -52,6 +52,10 @@ struct ChartCardView: View {
             .chartYAxis(.hidden)
             .chartLegend(position: .bottom, alignment: .leading, spacing: 6)
             .frame(height: 58)
+
+            Text(card.source)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.muted)
 
             HStack(alignment: .firstTextBaseline) {
                 termTicks

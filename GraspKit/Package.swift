@@ -9,7 +9,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "GraspKit"),
-        .testTarget(name: "GraspKitTests", dependencies: ["GraspKit"]),
+        .testTarget(
+            name: "GraspKitTests",
+            dependencies: ["GraspKit"],
+            resources: [.copy("Fixtures")]
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demo car contract</title>
+<!-- Demo prop for the FNB script (GRASP.md section 5). Print two copies on letter paper.
+     Numbers match GRASP.md section 7: $21,600 financed at 8.9% for 72 months. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #fff; color: #111; font: 13px/1.4 "Helvetica Neue", Arial, sans-serif; width: 8.5in; }
+  h1 { font-size: 20px; letter-spacing: .04em; text-align: center; margin: 0 0 2px; }
+  .sub { text-align: center; font-size: 11px; color: #444; margin-bottom: 14px; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; border: 1.5px solid #111; padding: 8px 10px; margin-bottom: 12px; font-size: 12px; }
+  .parties b { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #444; }
+  .tila { display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid #111; margin-bottom: 6px; }
+  .tila div { padding: 8px 10px; border-right: 1.5px solid #111; }
+  .tila div:last-child { border-right: 0; }
+  .tila .head { font-weight: 700; font-size: 12px; text-transform: uppercase; }
+  .tila .desc { font-size: 10px; color: #333; min-height: 28px; }
+  .tila .amt { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .schedule { border: 1.5px solid #111; padding: 8px 10px; margin-bottom: 12px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #ccc; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; width: 130px; }
+  tr.total td { font-weight: 700; border-top: 1.5px solid #111; border-bottom: 1.5px solid #111; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; }
+  .cols { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+  .fine { font-size: 9.5px; color: #333; text-align: justify; margin-top: 12px; }
+  .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 22px; font-size: 11px; }
+  .sign div { border-top: 1px solid #111; padding-top: 4px; }
+  .demo { margin-top: 14px; text-align: center; font-size: 10px; color: #888; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <h1>RETAIL INSTALLMENT SALE CONTRACT</h1>
+  <div class="sub">Simple Finance Charge · Contract No. 24-10872</div>
+
+  <div class="parties">
+    <div><b>Buyer</b>Alex Student<br>210 College Ave, State College, PA</div>
+    <div><b>Seller / Creditor</b>Valley Demo Motors<br>1 Showroom Way, State College, PA</div>
+    <div><b>Vehicle</b>2021 Honda Civic LX Sedan<br>Used · 31,240 miles</div>
+  </div>
+
+  <div class="tila">
+    <div><div class="head">Annual Percentage Rate</div><div class="desc">The cost of your credit as a yearly rate.</div><div class="amt">8.90 %</div></div>
+    <div><div class="head">Finance Charge</div><div class="desc">The dollar amount the credit will cost you.</div><div class="amt">$6,356.16</div></div>
+    <div><div class="head">Amount Financed</div><div class="desc">The amount of credit provided to you or on your behalf.</div><div class="amt">$21,600.00</div></div>
+    <div><div class="head">Total of Payments</div><div class="desc">The amount you will have paid after all scheduled payments.</div><div class="amt">$27,956.16</div></div>
+  </div>
+  <div class="schedule"><b>Your payment schedule will be:</b> 72 monthly payments of <b>$388.28</b>, beginning December 1, 2026. Total sale price, including your $1,000.00 down payment: $28,956.16.</div>
+
+  <div class="cols">
+    <div>
+      <h2>Itemization of Amount Financed</h2>
+      <table>
+        <tr><td>Cash price of vehicle</td><td class="n">$19,900.00</td></tr>
+        <tr><td>Documentary fee</td><td class="n">$499.00</td></tr>
+        <tr><td>Paint and fabric protection</td><td class="n">$895.00</td></tr>
+        <tr><td>Sales tax, title and registration</td><td class="n">$1,306.00</td></tr>
+        <tr><td>Subtotal</td><td class="n">$22,600.00</td></tr>
+        <tr><td>Less: cash down payment</td><td class="n">−$1,000.00</td></tr>
+        <tr class="total"><td>Amount financed</td><td class="n">$21,600.00</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2>Other Terms</h2>
+      <table>
+        <tr><td>Late charge</td><td class="n">5% after 10 days</td></tr>
+        <tr><td>Prepayment</td><td class="n">No penalty</td></tr>
+        <tr><td>Security</td><td class="n">The vehicle</td></tr>
+        <tr><td>Optional service contract</td><td class="n">Declined</td></tr>
+        <tr><td>Optional GAP waiver</td><td class="n">Declined</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <p class="fine">You may prepay this contract in full or in part at any time without penalty. Paint and fabric protection is optional and not required to obtain credit. If any payment is more than 10 days late you will pay a late charge of 5% of the unpaid amount of the payment. See the remaining terms for information about nonpayment, default, any required repayment in full before the scheduled date, and security interest. NOTICE TO BUYER: Do not sign this contract before you read it or if it contains any blank spaces. You are entitled to an exact copy of the contract you sign.</p>
+
+  <div class="sign">
+    <div>Buyer signature · Date</div>
+    <div>Seller signature · Date</div>
+  </div>
+
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL CONTRACT</div>
+</body>
+</html>

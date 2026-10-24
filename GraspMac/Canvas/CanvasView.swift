@@ -4,6 +4,8 @@ import SwiftUI
 struct CanvasView: View {
     @Bindable var model: CanvasModel
     @Bindable var pipeline: HandPipeline
+    let phone: PhoneLink
+    let paper: PaperReader
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -33,6 +35,16 @@ struct CanvasView: View {
                 .padding(20)
             }
 
+            HStack(alignment: .top) {
+                Spacer()
+                VStack(spacing: 12) {
+                    PhonePanel(phone: phone)
+                    PaperPanel(reader: paper)
+                }
+            }
+            .padding(.top, 36)
+            .padding(.trailing, 20)
+
             // Cursors last so they draw over everything; they never take clicks.
             ForEach(model.hands) { hand in
                 HandCursor(mode: model.cursorState(for: hand))
@@ -41,6 +53,12 @@ struct CanvasView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Drop a photo of a contract to read it without the phone.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first else { return false }
+            paper.read(fileAt: url)
+            return true
+        }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in

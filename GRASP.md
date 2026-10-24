@@ -180,8 +180,11 @@ Grasp/
 
 ### Phone ↔ Mac link: Multipeer Connectivity
 - Works over peer-to-peer Wi-Fi and Bluetooth without the venue network (hackathon Wi-Fi often blocks device-to-device traffic).
-- Service type e.g. `grasp-link`. Live frames: `.unreliable`; captures and commands: `.reliable`.
-- Messages (Codable JSON, frames as JPEG Data):
+- Service type `grasp-link`. The Mac advertises and accepts; the phone joins the first Mac it finds.
+- Everything is `.reliable`. Live frames (720 px, ~15 KB, ~4 fps) go one at a time: the next waits for the Mac's `received`, so a slow link drops frames instead of lagging. Captures (2000 px, ~60 KB) skip the queue.
+- The simulator has no camera, so GraspPhone sends numbered test frames there: run it in the simulator to test the link without an iPhone.
+- Built so far (`GraspKit/Link`): `frame(LinkFrame)` and `received(frameID, sentAt)`, as binary plists (JPEG bytes stay raw). Add the rest as features need them.
+- Planned messages:
   - Phone → Mac: `hello(device)`, `frame(jpeg, ts, purpose: live|capture)`, `fling(captureId)`
   - Mac → Phone: `highlights([{text, rect, kind: term|addon}])`, `buzz(message)`, `status(text)`
 - **Fallbacks:** Continuity Camera (zero iPhone code; Desk View shows the table from above), then the phone's hotspot + a small local WebSocket.
@@ -192,11 +195,11 @@ Grasp/
 - Start with `SimulatedProbeSource` behind the same protocol so research work does not wait on hardware.
 
 ### AI (Gemini for every call)
-Use a fast Gemini model with JSON output: `gemini-3.8-flash` (newest Flash on our key as of Oct 24; `gemini-3.5-flash-lite` if speed matters more). Send small JPEGs. Numbers are always computed in Swift, never by the AI.
+Use `gemini-3.5-flash-lite` with `thinkingLevel: minimal` and a response schema (`GeminiClient.fastModel`). On Oct 24 it read the demo contract perfectly in ~1.5 s, even tilted and low quality; `gemini-3.8-flash` was equally accurate but ~4.5 s (and rejects `minimal`; use `low`). Send small JPEGs. Numbers are always computed in Swift, never by the AI.
 
 | Call | Input | Output (JSON) |
 |---|---|---|
-| Contract reader | Photo + Apple Vision text lines | `{cash_price, fees:[{name, amount, is_addon}], down_payment, amount_financed, apr, term_months, monthly_payment}` |
+| Contract reader (`OfferReader`, built) | Photo (Vision text lines later, for highlight boxes) | `{document_type, cash_price, fees:[{name, amount, is_addon}], down_payment, amount_financed, apr_percent, term_months, monthly_payment}`; Swift checks the payment and itemization add up |
 | Highlight matching | Field values + Vision line boxes | Done on device: match values to recognized text lines, send boxes to phone |
 | Action logger | Overhead frame + protocol steps + labeled objects + last state | `{event: null}` or `{event: {action, object, step_id, confidence}}` |
 | Figure to data | Photo of a figure | `{x_label, y_label, points:[[x,y],…]}` (show for confirmation) |
@@ -273,7 +276,7 @@ Vitamin C tablets 1000 mg · Iodine tincture 2% · Hydrogen peroxide 3% · Liqui
 9 small clear cups · tray · paper towels · spoon · ice · hot water · salt packets (backup) · tape and marker (label A, B, C).
 
 ### To print
-Cup mat (circles A, B, C + **white and blue reference squares**) · Arrhenius equation card + a textbook Ea value · car contract ×2 · window sticker + dealer add-on sticker · credit union quote card · toy car or cardboard car door.
+Cup mat (circles A, B, C + **white and blue reference squares**) · Arrhenius equation card + a textbook Ea value · car contract ×2 (`props/contract.html`, open in a browser and print) · window sticker + dealer add-on sticker · credit union quote card · toy car or cardboard car door.
 
 ### Iodine clock: starting recipe (tune by rehearsal)
 - **Stock:** crush one 1000 mg vitamin C tablet into 60 mL warm water.
