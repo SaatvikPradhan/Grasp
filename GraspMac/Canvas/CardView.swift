@@ -1,3 +1,4 @@
+import GraspKit
 import SwiftUI
 
 /// The frame every card shares: surface, border, lift while held, glow while merging.
@@ -40,8 +41,8 @@ struct CardView: View {
 
     @ViewBuilder
     private var content: some View {
-        if card.isFolded, case .document(let document) = card.kind {
-            FoldedPageView(document: document)
+        if card.isFolded {
+            FoldedCardView(card: card)
         } else {
             unfolded
         }
@@ -70,6 +71,8 @@ struct CardView: View {
             NotesCardView(cardID: card.id, card: notes)
         case .notebook(let notebook):
             NotebookCardView(cardID: card.id, card: notebook)
+        case .model(let model):
+            ModelCardView(cardID: card.id, card: model, probes: probes)
         }
     }
 
@@ -92,42 +95,89 @@ struct CardView: View {
     }
 }
 
-/// A page out of focus: what it is and what's wrong with it. Grab or click it to open it.
-struct FoldedPageView: View {
-    let document: PageDocument
+/// A card out of focus, as a chip: a page's title and what's wrong with it, or what a card
+/// beside a page holds. Grab or click it to open it.
+struct FoldedCardView: View {
+    let card: Card
 
     var body: some View {
-        let mistakes = document.reading.mismatches.count
-        let catches = document.reading.allCatches.count - mistakes
         HStack(spacing: 10) {
-            Image(nsImage: document.image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 34, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            if case .document(let document) = card.kind {
+                Image(nsImage: document.image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 34, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 34, height: 44)
+            }
             VStack(alignment: .leading, spacing: 3) {
-                Text(document.reading.title)
+                Text(title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
-                HStack(spacing: 8) {
-                    if mistakes > 0 {
-                        Text(mistakes == 1 ? "1 doesn't add up" : "\(mistakes) don't add up")
-                            .foregroundStyle(Theme.warn)
-                    }
-                    if catches > 0 {
-                        Text("\(catches) catch\(catches == 1 ? "" : "es")")
-                            .foregroundStyle(Theme.hot)
-                    }
-                    if mistakes == 0 && catches == 0 {
-                        Text(document.reading.kind)
-                            .foregroundStyle(Theme.muted)
-                    }
-                }
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
+                detail
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    private var symbol: String {
+        switch card.kind {
+        case .answer: "text.bubble"
+        case .notes: "checklist"
+        case .model: "function"
+        case .notebook: "book.closed"
+        default: "rectangle"
+        }
+    }
+
+    private var title: String {
+        switch card.kind {
+        case .document(let document): document.reading.title
+        case .answer(let answer): "“\(answer.question)”"
+        case .notes(let notes): "Your notes on \(notes.paperTitle)"
+        case .model(let model): "Live model: \(model.paperTitle)"
+        case .notebook(let notebook): notebook.notebook.title
+        default: "Card"
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch card.kind {
+        case .document(let document):
+            let mistakes = document.reading.mismatches.count
+            let catches = document.reading.allCatches.count - mistakes
+            HStack(spacing: 8) {
+                if mistakes > 0 {
+                    Text(mistakes == 1 ? "1 doesn't add up" : "\(mistakes) don't add up").foregroundStyle(Theme.warn)
+                }
+                if catches > 0 {
+                    Text("\(catches) catch\(catches == 1 ? "" : "es")").foregroundStyle(Theme.hot)
+                }
+                if mistakes == 0 && catches == 0 {
+                    Text(document.reading.kind).foregroundStyle(Theme.muted)
+                }
+            }
+        case .answer(let answer):
+            Text(answer.answer.answer).foregroundStyle(Theme.muted)
+        case .notes(let notes):
+            let differing = notes.linked.notes.filter { $0.status == .differs }.count
+            Text("\(notes.linked.notes.count) notes · \(differing) differ").foregroundStyle(differing > 0 ? Theme.hot : Theme.muted)
+        case .model(let model):
+            let wrong = model.model.mismatches.count
+            Text(wrong == 0 ? "\(model.model.conditions.count) conditions" : "\(wrong) result\(wrong == 1 ? "" : "s") don't follow")
+                .foregroundStyle(wrong > 0 ? Theme.warn : Theme.muted)
+        case .notebook(let notebook):
+            Text("\(notebook.notebook.steps.count) steps · \(clockTime(notebook.notebook.duration))").foregroundStyle(Theme.muted)
+        default:
+            EmptyView()
         }
     }
 }

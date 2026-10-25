@@ -124,13 +124,15 @@ Valley State University 2027–28 offer: "$28,300 in aid · $0 remaining · You'
 | Note | Should be marked | Why |
 |---|---|---|
 | 1. k goes from 0.031 to 0.019 per minute | matches | Abstract |
-| 2. With a lid it takes 25 minutes to reach 60 °C | differs | The paper says 23.5 minutes |
+| 2. With a lid it takes 25 minutes to reach 60 °C | differs | The paper says 30.0 minutes |
 | 3. They ran 20 trials | differs | 12 trials per condition |
 | 4. Room was kept at 21 °C | matches | Methods |
 | 5. Ceramic cooled slower the whole time | differs | Ceramic lost heat faster for the first five minutes |
 | 6. Stirring made it cool faster | not in the paper | They didn't stir |
 | 7. Evaporation explains most of the lid effect | differs | Not measured; expected to explain "part" |
 | 8. Sleeves don't matter | matches | "A sleeve made no measurable difference" |
+
+**The paper's own math.** Every row of Table 1 follows Newton's law from 90 °C in a 21 °C room, time to 60 °C = ln(69/39)/k, except one planted mistake: **Ceramic, lid** has k = 0.017 per minute, which gives **33.6 minutes**, but the table says 25.9. The live model card should flag it.
 
 **Directions** should grow from section 4: weigh the cup to measure evaporation, other fill volumes, double-walled cups, and lids with the drinking hole open or closed.
 

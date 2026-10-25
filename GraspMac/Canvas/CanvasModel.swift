@@ -28,6 +28,10 @@ final class CanvasModel {
     /// The card being worked on: the last one scanned, grabbed or clicked. Questions and
     /// commands go to it.
     private(set) var focusedID: UUID?
+    /// The last page in focus: what answers, notes and models sit beside.
+    @ObservationIgnored private var pageInFocus: UUID?
+    /// Folded cards, in the order they were folded.
+    @ObservationIgnored private var chipOrder: [UUID] = []
     /// What's being hovered, by mouse or by a hand held still over it.
     private(set) var hovered: HoverTarget?
     /// Called when the hovered item changes, for lighting the same spot on the phone.
@@ -158,9 +162,9 @@ final class CanvasModel {
     private func updateMerges() {
         var candidates: Set<UUID> = []
         for id in heldIDs {
-            guard let moving = card(id), let movingRole = moving.loanCard?.role else { continue }
+            guard let moving = card(id) else { continue }
             for other in cards where other.id != id {
-                guard let otherRole = other.loanCard?.role, otherRole != movingRole else { continue }
+                guard Self.canMerge(moving, other) else { continue }
                 let overlap = overlapRatio(moving.frame, other.frame)
                 if overlap >= Self.mergeOverlap {
                     merge(id, other.id)
@@ -174,8 +178,35 @@ final class CanvasModel {
         if candidates != mergeCandidates { mergeCandidates = candidates }
     }
 
-    /// Replaces the dealer's loan card and a quote card with one comparison.
+    /// A dealer loan and a quote compare; so do a paper's model and the cups on the bench.
+    private static func canMerge(_ a: Card, _ b: Card) -> Bool {
+        if let roleA = a.loanCard?.role, let roleB = b.loanCard?.role { return roleA != roleB }
+        switch (a.kind, b.kind) {
+        case (.model(let model), .temperatures), (.temperatures, .model(let model)): return !model.comparesCups
+        default: return false
+        }
+    }
+
+    /// Replaces the dealer's loan card and a quote card with one comparison, or folds the cup
+    /// chart into a paper's model so your cups run against its prediction.
     func merge(_ first: UUID, _ second: UUID) {
+        if let pair = [first, second].first(where: { if case .model = card($0)?.kind { true } else { false } }),
+           let cups = [first, second].first(where: { if case .temperatures = card($0)?.kind { true } else { false } }) {
+            for (hand, grip) in grips where grip.cardID == first || grip.cardID == second {
+                grips[hand] = Grip()
+            }
+            mouseGrip = nil
+            mergeCandidates = []
+            withAnimation(.spring(duration: 0.45, bounce: 0.3)) {
+                cards.removeAll { $0.id == cups }
+                if let index = index(of: pair), case .model(var model) = cards[index].kind {
+                    model.comparesCups = true
+                    cards[index].kind = .model(model)
+                }
+            }
+            settle(pair)
+            return
+        }
         guard let a = card(first), let b = card(second),
               let loanA = a.loanCard, let loanB = b.loanCard, loanA.role != loanB.role else { return }
         let (dealer, other) = loanA.role == .dealer ? (loanA, loanB) : (loanB, loanA)
@@ -241,9 +272,11 @@ final class CanvasModel {
         withAnimation(.spring(duration: 0.3)) {
             cards.removeAll { $0.id == id }
         }
+        layoutChips()
         // Throwing away the page in focus opens the one read before it.
-        if focusedID == id {
+        if focusedID == id || pageInFocus == id {
             focusedID = nil
+            pageInFocus = nil
             if let previous = pagesByAge.last { focus(previous.id) }
         }
     }
@@ -261,6 +294,8 @@ final class CanvasModel {
         mergeCandidates = []
         trashTarget = nil
         focusedID = nil
+        pageInFocus = nil
+        chipOrder = []
         withAnimation(.spring(duration: 0.35)) {
             cards.removeAll()
         }
@@ -268,50 +303,32 @@ final class CanvasModel {
 
     // MARK: Focus
 
-    /// Moves focus to a card and brings it to the front. Focusing a page folds every other page
-    /// into a chip down the left edge; a chip that gets focus opens again, at `point` if given
-    /// (under a hand that grabbed it) or in open space.
+    /// Moves focus to a card and brings it to the front. Focusing a different page folds every
+    /// other page, and whatever sat beside it, into chips down the left edge. A chip that gets
+    /// focus opens again: a page at `point` (under a hand that grabbed it) or in open space, and
+    /// anything else beside the page in focus.
     func focus(_ id: UUID, openingAt point: CGPoint? = nil) {
         guard let index = index(of: id) else { return }
+        let moved = focusedID != id
         focusedID = id
         let card = cards.remove(at: index)
         cards.append(card)
-        guard case .document = card.kind else { return }
+        let isPage = if case .document = card.kind { true } else { false }
         withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
-            open(id, at: point)
-            let others = pagesByAge.filter { $0.id != id }
-            for (slot, page) in others.enumerated() {
-                fold(page.id, slot: slot)
+            if isPage {
+                pageInFocus = id
+                open(id, at: point)
+                guard moved else { return }
+                for other in cards where other.id != id && !other.isFolded {
+                    if case .document = other.kind { fold(other.id) } else if Self.sitsBeside(other.kind) { fold(other.id) }
+                }
+            } else if card.isFolded {
+                if Self.sitsBeside(card.kind), pageInFocus != nil, point == nil { dock(id) } else { open(id, at: point) }
             }
         }
     }
 
-    private func open(_ id: UUID, at point: CGPoint?) {
-        guard let index = index(of: id), cards[index].isFolded else { return }
-        cards[index].isFolded = false
-        let size = cards[index].size
-        if let point {
-            cards[index].center = fitted(point, size: size)
-        } else {
-            cards[index].center = freeSpot(for: size, excluding: id)
-        }
-    }
-
-    /// Shrinks a page to a chip, in its place down the left edge.
-    private func fold(_ id: UUID, slot: Int) {
-        guard let index = index(of: id) else { return }
-        let chip = Card.chipSize
-        let y = 130 + chip.height / 2 + Double(slot) * (chip.height + 10)
-        cards[index].isFolded = true
-        cards[index].center = CGPoint(x: 28 + chip.width / 2, y: y)
-    }
-
-    /// The document card in focus, if focus is on a page.
-    var focusedDocument: PageDocument? {
-        focusedID.flatMap(card).flatMap(document(for:))
-    }
-
-    /// Page cards, oldest first, so chips keep their order.
+    /// Page cards, oldest first.
     private var pagesByAge: [Card] {
         let pages: [(card: Card, readAt: Date)] = cards.compactMap { card in
             guard case .document(let document) = card.kind else { return nil }
@@ -320,12 +337,66 @@ final class CanvasModel {
         return pages.sorted { $0.readAt < $1.readAt }.map(\.card)
     }
 
+    /// Cards that sit beside the page in focus: one at a time, the rest as chips.
+    static func sitsBeside(_ kind: Card.Kind) -> Bool {
+        switch kind {
+        case .answer, .notes, .model, .notebook: true
+        default: false
+        }
+    }
+
+    private func open(_ id: UUID, at point: CGPoint?) {
+        guard let index = index(of: id), cards[index].isFolded else { return }
+        cards[index].isFolded = false
+        chipOrder.removeAll { $0 == id }
+        let size = cards[index].size
+        if let point {
+            cards[index].center = fitted(point, size: size)
+        } else {
+            cards[index].center = freeSpot(for: size, excluding: id)
+        }
+        layoutChips()
+    }
+
+    /// Shrinks a card to a chip at the end of the column down the left edge.
+    private func fold(_ id: UUID) {
+        guard let index = index(of: id), !cards[index].isFolded else { return }
+        cards[index].isFolded = true
+        if !chipOrder.contains(id) { chipOrder.append(id) }
+        layoutChips()
+    }
+
+    /// Chips in the order they were folded, top to bottom, then a second column.
+    private func layoutChips() {
+        chipOrder.removeAll { id in !cards.contains { $0.id == id && $0.isFolded } }
+        let chip = Card.chipSize
+        let perColumn = max(1, Int((canvasSize.height - 130 - 90) / (chip.height + 10)))
+        for (slot, id) in chipOrder.enumerated() {
+            guard let index = index(of: id) else { continue }
+            let column = Double(slot / perColumn), row = Double(slot % perColumn)
+            cards[index].center = CGPoint(x: 28 + chip.width / 2 + column * (chip.width + 12),
+                                          y: 130 + chip.height / 2 + row * (chip.height + 10))
+        }
+    }
+
+    /// The page in focus, or the page last in focus when focus is on something beside it.
+    var focusedDocument: PageDocument? {
+        pageInFocus.flatMap(card).flatMap(document(for:))
+    }
+
     // MARK: Swipe
 
     func toggleStyle(of id: UUID) {
         guard let index = index(of: id) else { return }
         withAnimation(.spring(duration: 0.35)) {
-            cards[index].style.toggle()
+            // A swipe across a paper's model flips to its next condition: lid on, lid off.
+            if case .model(var model) = cards[index].kind {
+                model.selected = (model.selected + 1) % model.model.conditions.count
+                model.twistedK = nil
+                cards[index].kind = .model(model)
+            } else {
+                cards[index].style.toggle()
+            }
         }
     }
 
@@ -609,7 +680,7 @@ final class CanvasModel {
             case .pitch:
                 "The salesperson's pitch, checked"
             case .document(let document):
-                "\(document.reading.title) (\(document.reading.kind))\(card.id == focusedID ? ", in focus" : "")"
+                "\(document.reading.title) (\(document.reading.kind))\(card.id == pageInFocus ? ", in focus" : "")"
             case .answer(let answer):
                 "An answer to “\(answer.question)”"
             case .notes(let notes):
@@ -617,6 +688,9 @@ final class CanvasModel {
                     + "\(notes.linked.notes.filter { $0.status == .differs }.count) differ from the paper"
             case .notebook(let notebook):
                 "Lab notebook: \(notebook.notebook.title)"
+            case .model(let model):
+                "The model from \(model.paperTitle), running, on \(model.condition.name)"
+                    + (model.model.mismatches.isEmpty ? "" : "; \(model.model.mismatches.count) of its reported results don't follow from its own equation")
             }
         }
         return parts.isEmpty ? "Nothing yet." : parts.joined(separator: ". ") + "."
@@ -677,8 +751,9 @@ final class CanvasModel {
     private func freeSpot(for size: CGSize, excluding excluded: UUID? = nil) -> CGPoint {
         let placed = cards.filter { !$0.isArriving && $0.id != excluded }
         // Covering the card in focus or a chip costs as much as covering a panel.
-        let others = placed.filter { $0.id != focusedID && !$0.isFolded }.map(\.frame)
-        let reserved = reservedAreas + placed.filter { $0.id == focusedID || $0.isFolded }.map(\.frame)
+        let inFocus = [focusedID, pageInFocus]
+        let others = placed.filter { !inFocus.contains($0.id) && !$0.isFolded }.map(\.frame)
+        let reserved = reservedAreas + placed.filter { inFocus.contains($0.id) || $0.isFolded }.map(\.frame)
         let middle = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         var best = middle
         var bestScore = Double.infinity
@@ -813,6 +888,11 @@ extension CanvasModel {
             return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
         case .labStep:
             return nil
+        case .cited(let cardID, let index):
+            guard let card = card(cardID), let citation = citations(for: card)[safe: index],
+                  let document = documents[citation.documentID], let capture = document.captureID,
+                  let location = citation.cited.location, let rect = box(for: location, in: document) else { return nil }
+            return (capture, LinkHighlight(text: citation.cited.quote, rect: rect, kind: .term))
         case .passage(let cardID, let index):
             guard let (document, passage) = passage(cardID, index), let capture = document.captureID,
                   let rect = box(for: passage.location, in: document) else { return nil }
@@ -837,6 +917,65 @@ extension CanvasModel {
         guard let notesID, let paper = cards.first(where: { document(for: $0)?.id == notes.paperID }) else { return }
         focus(paper.id)
         withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(notesID) }
+    }
+
+    /// Shows a paper's model beside the paper, replacing an earlier one for the same paper.
+    func showModel(_ model: ModelCard) {
+        show(.model(model)) { if case .model(let old) = $0 { old.paperID == model.paperID } else { false } }
+        guard let id = cards.last(where: { if case .model(let old) = $0.kind { old.paperID == model.paperID } else { false } })?.id,
+              let paper = cards.first(where: { document(for: $0)?.id == model.paperID }) else { return }
+        focus(paper.id)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// Picks which of a paper model's conditions the card draws boldest and the dial turns.
+    func selectCondition(_ condition: Int, in cardID: UUID) {
+        guard let index = index(of: cardID), case .model(var model) = cards[index].kind,
+              model.model.conditions.indices.contains(condition) else { return }
+        model.selected = condition
+        model.twistedK = nil
+        withAnimation(.spring(duration: 0.3)) { cards[index].kind = .model(model) }
+    }
+
+    /// Runs your cups against the paper's model: the same as pushing the cup chart into it.
+    @discardableResult
+    func compareCupsWithPaper() -> Bool {
+        guard let index = cards.lastIndex(where: { if case .model = $0.kind { true } else { false } }),
+              case .model(var model) = cards[index].kind else { return false }
+        if let cups = cards.first(where: { if case .temperatures = $0.kind { true } else { false } }) {
+            merge(cards[index].id, cups.id)
+        } else {
+            model.comparesCups = true
+            withAnimation(.spring(duration: 0.4)) { cards[index].kind = .model(model) }
+            settle(cards[index].id)
+        }
+        return true
+    }
+
+    /// The words on a page a card cites, in the order its hover targets number them.
+    func citations(for card: Card) -> [Citation] {
+        switch card.kind {
+        case .model(let model):
+            let id = model.paperID
+            var list = [Citation(documentID: id, cited: model.model.equation, heading: "The paper's equation",
+                                 detail: "Swift runs it with the numbers below, each from the page")]
+            for condition in model.model.conditions {
+                list.append(Citation(documentID: id, cited: condition.k.cited, heading: "\(condition.name): k = \(condition.k.value)",
+                                     detail: condition.spread.map { "± \($0) per \(model.model.timeUnit), as printed" }))
+            }
+            for check in model.model.checks {
+                let what = check.reported.kind == .timeTo
+                    ? "Time to \(PaperModelText.number(check.reported.at)): the paper says \(PaperModelText.number(check.reported.value.value)) \(model.model.timeUnit)"
+                    : "Value at \(PaperModelText.number(check.reported.at)) \(model.model.timeUnit): the paper says \(PaperModelText.number(check.reported.value.value))"
+                let detail = check.matches
+                    ? "Its own k gives \(PaperModelText.number(check.expected)): it follows."
+                    : "Its own k gives \(PaperModelText.number(check.expected)), not \(PaperModelText.number(check.reported.value.value)). One of the two is wrong."
+                list.append(Citation(documentID: id, cited: check.reported.value.cited, heading: "\(check.condition) · \(what)", detail: detail))
+            }
+            return list
+        default:
+            return []
+        }
     }
 
     /// Shows a written-up lab session, replacing the last one.
@@ -890,10 +1029,18 @@ extension CanvasModel {
     /// Puts a card just right of the card in focus (a page, a notebook), sliding that card left
     /// (not past the chips) to make room, and below the phone panel when it would run under it.
     private func dock(_ id: UUID) {
-        guard let pageID = focusedID, pageID != id, let page = index(of: pageID), !cards[page].isFolded,
-              let index = index(of: id) else { return }
+        guard let pageID = pageInFocus, pageID != id, index(of: pageID) != nil, let found = index(of: id) else { return }
+        if cards[found].isFolded {
+            cards[found].isFolded = false
+            chipOrder.removeAll { $0 == id }
+        }
+        // One card beside the page at a time; the others fold into chips.
+        for other in cards where other.id != id && Self.sitsBeside(other.kind) && !other.isFolded {
+            fold(other.id)
+        }
+        guard let page = index(of: pageID), !cards[page].isFolded, let index = index(of: id) else { return }
         let pageSize = cards[page].size, size = cards[index].size
-        let hasChips = cards.contains(where: \.isFolded)
+        let hasChips = !chipOrder.isEmpty
         let leftmost = hasChips ? 28 + Card.chipSize.width + 20 : 20
         let rightmost = canvasSize.width - 20
         var pageMinX = cards[page].frame.minX
@@ -931,6 +1078,12 @@ extension CanvasModel {
 
     func provenance(for target: HoverTarget) -> Provenance? {
         switch target {
+        case .cited(let cardID, let index):
+            guard let card = card(cardID), let citation = citations(for: card)[safe: index],
+                  let document = documents[citation.documentID] else { return nil }
+            let crop = citation.cited.location.flatMap { box(for: $0, in: document) }.flatMap { PageCrop.around($0, in: document.image) }
+            return Provenance(heading: citation.heading, origin: origin(of: document), quote: citation.cited.quote,
+                              formula: citation.detail, crop: crop?.image, highlight: crop?.highlight)
         case .labStep(let cardID, let index):
             guard case .notebook(let card)? = card(cardID)?.kind, card.notebook.steps.indices.contains(index) else { return nil }
             let step = card.notebook.steps[index]

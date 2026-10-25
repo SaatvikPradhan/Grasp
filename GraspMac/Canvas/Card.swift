@@ -105,6 +105,23 @@ struct NotesCard: Equatable {
     var linked: LinkedNotes
 }
 
+/// The model a paper describes, running: each condition's curve, the paper's own results checked
+/// against its equation, and, once pushed into the cup chart, your cups against its prediction.
+struct ModelCard: Equatable {
+    var paperID: UUID
+    var paperTitle: String
+    var model: PaperModel
+    /// The condition the dial turns and the card draws boldest.
+    var selected = 0
+    /// k as twisted, per time unit; nil while it's the paper's.
+    var twistedK: Double?
+    /// Showing the cups on the bench against the paper.
+    var comparesCups = false
+
+    var condition: PaperModel.Condition { model.conditions[min(selected, model.conditions.count - 1)] }
+    var k: Double { twistedK ?? condition.k.value }
+}
+
 /// A lab session written up, with the frames it was written from.
 struct NotebookCard: Equatable {
     var notebook: LabNotebook
@@ -145,8 +162,11 @@ struct Dial: Equatable {
     var step: Int
     var unit: String
 
+    /// How to show the value when it isn't a plain count, such as "k 0.019 per min".
+    var display: String?
+
     var fraction: Double { Double(value - range.lowerBound) / Double(range.upperBound - range.lowerBound) }
-    var label: String { "\(value) \(unit)" }
+    var label: String { display ?? "\(value) \(unit)" }
 
     func clamped(_ proposed: Int) -> Int {
         min(max(proposed, range.lowerBound), range.upperBound)
@@ -172,6 +192,8 @@ struct Card: Identifiable, Equatable {
         case notes(NotesCard)
         /// A lab session written up.
         case notebook(NotebookCard)
+        /// A paper's model, running.
+        case model(ModelCard)
     }
 
     /// Swipe flips a card between its two ways of drawing the same numbers (bars and lines).
@@ -213,6 +235,7 @@ struct Card: Identifiable, Equatable {
         case .answer(let answer): CGSize(width: Self.answerWidth, height: Self.answerHeight(answer))
         case .notes(let notes): CGSize(width: Self.notesWidth, height: Self.notesHeight(notes))
         case .notebook(let notebook): CGSize(width: Self.notebookWidth, height: Self.notebookHeight(notebook))
+        case .model(let model): CGSize(width: 600, height: model.comparesCups ? 470 : 500)
         }
     }
 
@@ -241,6 +264,10 @@ struct Card: Identifiable, Equatable {
             case .breakdown, .none:
                 nil
             }
+        case .model(let card):
+            // k in thousandths: 0.019 per minute is 19.
+            Dial(value: Int((card.k * 1000).rounded()), range: 1...100, step: 1, unit: "",
+                 display: String(format: "k %.3f per %@", card.k, card.model.timeUnit))
         case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
             nil
         }
@@ -263,6 +290,9 @@ struct Card: Identifiable, Equatable {
         case .document(var document):
             document.months = value
             kind = .document(document)
+        case .model(var card):
+            card.twistedK = Double(value) / 1000
+            kind = .model(card)
         case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
             return false
         }

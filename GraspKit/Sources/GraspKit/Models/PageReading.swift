@@ -177,14 +177,7 @@ public struct PageReading: Codable, Sendable, Equatable {
     }
 
     private static func contains(_ number: String, in text: String) -> Bool {
-        var start = text.startIndex
-        while let range = text.range(of: number, range: start..<text.endIndex) {
-            let before = range.lowerBound > text.startIndex ? text[text.index(before: range.lowerBound)] : " "
-            let after = range.upperBound < text.endIndex ? text[range.upperBound] : " "
-            if !before.isNumber, before != ".", !after.isNumber { return true }
-            start = range.upperBound
-        }
-        return false
+        PrintedNumber.contains(number, in: text)
     }
 
     /// A late fee or penalty only applies if something goes wrong, so it isn't a charge up front.
@@ -434,14 +427,8 @@ extension PageReading {
     /// Where a number is printed: the fact it was read as, or else the line of the page it's on.
     func spot(of number: Double) -> (quote: String, printed: String?)? {
         if let fact = source(of: number) { return (fact.quote, fact.asPrinted) }
-        // 6.2 may be printed "6.2" or "6.20"; 1150 may be "1,150" or "1,150.00".
-        let short = String(abs(number)).replacing(#/\.0$/#, with: "")
-        let forms = [String(format: "%.2f", abs(number)), Self.plain(abs(number)), short]
-        for line in lines ?? [] {
-            let digits = line.replacingOccurrences(of: ",", with: "")
-            if forms.contains(where: { Self.contains($0, in: digits) }) { return (line, nil) }
-        }
-        return nil
+        let lines = lines ?? []
+        return PrintedNumber.line(of: number, in: lines).map { (lines[$0], nil) }
     }
 
     private static func money(_ value: Double) -> String {

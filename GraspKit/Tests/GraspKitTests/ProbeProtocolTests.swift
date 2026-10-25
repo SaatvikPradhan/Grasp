@@ -72,3 +72,21 @@ struct SimulatedBenchTests {
         }
     }
 }
+
+struct BenchActionTests {
+    @Test func pourLidAndIceChangeTheCurve() {
+        var bench = SimulatedBench.emptyCups()
+        bench.noise = 0
+        #expect(abs(bench.celsius(.a, after: 5) - 21.5) < 0.01)
+        bench.apply(.pour(.a, celsius: 88), at: 10)
+        #expect(bench.celsius(.a, after: 10) == 88)
+        // Open: k = 0.031 per minute.
+        let open = bench.celsius(.a, after: 70)
+        #expect(abs(open - (21 + 67 * exp(-0.031))) < 0.001)
+        bench.apply(.lid(.a, on: true), at: 70)
+        let lidded = bench.celsius(.a, after: 130)
+        #expect(abs(lidded - (21 + (open - 21) * exp(-0.019))) < 0.001)
+        bench.apply(.ice(.a), at: 130)
+        #expect(abs(bench.celsius(.a, after: 130) - (lidded - 18)) < 0.001)
+    }
+}

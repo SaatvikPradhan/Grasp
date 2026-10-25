@@ -14,10 +14,34 @@ final class Researcher {
         self.canvas = canvas
     }
 
-    /// Every page read comes here: a page of notes links itself to the paper on the canvas.
+    /// Every page read comes here: a page of notes links itself to the paper on the canvas, and
+    /// a paper with a model Swift can run becomes a live model beside it.
     func pageRead(_ document: PageDocument) {
-        guard Self.isNotes(document), paper(besides: document) != nil else { return }
-        Task { await link(notes: document.text.joined(separator: "\n"), from: document) }
+        if Self.isNotes(document) {
+            guard paper(besides: document) != nil else { return }
+            Task { await link(notes: document.text.joined(separator: "\n"), from: document) }
+        } else if Self.isPaper(document) {
+            Task { await runModel(of: document) }
+        }
+    }
+
+    /// Reads the paper's model and shows it running beside the paper.
+    @discardableResult
+    func runModel(of paper: PageDocument) async -> String {
+        guard let client = GeminiClient.fromAppKeys else { return GeminiClient.Failure.missingKey.localizedDescription }
+        isLinking = true
+        defer { isLinking = false }
+        do {
+            guard let model = try await ModelReader(client: client).read(paper: paper.text) else {
+                return "No model in \(paper.reading.title) that Grasp can run"
+            }
+            canvas.showModel(ModelCard(paperID: paper.id, paperTitle: paper.reading.title, model: model))
+            let wrong = model.mismatches.count
+            return wrong == 0 ? "The paper's model is running; its results follow from its equation"
+                : "The paper's model is running; \(wrong) reported result\(wrong == 1 ? " doesn't" : "s don't") follow from its own equation"
+        } catch {
+            return "Couldn't read the paper's model: \(error.localizedDescription)"
+        }
     }
 
     /// Links notes to the paper: the page in focus, or the newest page that isn't notes.
@@ -75,6 +99,12 @@ final class Researcher {
         if let focused = canvas.focusedDocument, focused.id != notes?.id, !Self.isNotes(focused) { return focused }
         let onCanvas = canvas.cards.compactMap { canvas.document(for: $0) }
         return onCanvas.filter { $0.id != notes?.id && !Self.isNotes($0) }.max { $0.readAt < $1.readAt }
+    }
+
+    /// A paper, study or report: worth looking for a model in.
+    static func isPaper(_ document: PageDocument) -> Bool {
+        let words = (document.reading.kind + " " + document.reading.title).lowercased()
+        return ["paper", "study", "article", "journal", "research", "experiment", "report"].contains { words.contains($0) }
     }
 
     private static func isNotes(_ document: PageDocument) -> Bool {

@@ -9,12 +9,19 @@ final class SimulatedProbeSource: ProbeSource {
     private(set) var isConnected = false
     var onReading: ((Reading) -> Void)?
 
-    private let bench: SimulatedBench
+    private var bench: SimulatedBench
     private var timer: Timer?
     private var startedAt = 0.0
 
-    init(bench: SimulatedBench = SimulatedBench()) {
+    /// Three empty cups at room temperature until something is poured in.
+    init(bench: SimulatedBench = .emptyCups()) {
         self.bench = bench
+    }
+
+    /// Pours, lids or ices a cup now, as if someone did it at the bench.
+    func apply(_ action: SimulatedBench.Action) {
+        bench.apply(action, at: ProcessInfo.processInfo.systemUptime - startedAt)
+        tick()
     }
 
     func start() {

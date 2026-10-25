@@ -17,7 +17,7 @@ struct TemperatureCardView: View {
             HStack(spacing: 22) {
                 ForEach(Cup.allCases) { cup in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(cup.rawValue) · \(role(cup))")
+                        Text("Cup \(cup.rawValue)")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(color(cup))
                         Text(value(cup))
@@ -49,7 +49,7 @@ struct TemperatureCardView: View {
         let now = hub.now
         return Chart {
             ForEach(Cup.allCases) { cup in
-                ForEach(hub.history[cup] ?? [], id: \.time) { reading in
+                ForEach((hub.history[cup] ?? []).filter { now - $0.time <= ProbeHub.window }, id: \.time) { reading in
                     LineMark(
                         x: .value("Seconds ago", reading.time - now),
                         y: .value("°C", reading.celsius),
@@ -58,6 +58,17 @@ struct TemperatureCardView: View {
                     .foregroundStyle(color(cup))
                     .interpolationMethod(.monotone)
                 }
+            }
+            ForEach(hub.markers.filter { now - $0.time <= ProbeHub.window }) { marker in
+                RuleMark(x: .value("Seconds ago", marker.time - now))
+                    .foregroundStyle(Theme.hot.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .annotation(position: .top, alignment: .leading) {
+                        Text(marker.label)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.hot)
+                            .lineLimit(1)
+                    }
             }
         }
         .chartXScale(domain: -ProbeHub.window...0)
@@ -88,7 +99,7 @@ struct TemperatureCardView: View {
         Chart {
             ForEach(Cup.allCases) { cup in
                 if let reading = hub.latest[cup] {
-                    BarMark(x: .value("Cup", "\(cup.rawValue) · \(role(cup))"), y: .value("°C", reading.celsius))
+                    BarMark(x: .value("Cup", "Cup \(cup.rawValue)"), y: .value("°C", reading.celsius))
                         .foregroundStyle(color(cup))
                         .annotation(position: .top) {
                             Text(String(format: "%.1f°", reading.celsius))
@@ -104,14 +115,6 @@ struct TemperatureCardView: View {
     private func value(_ cup: Cup) -> String {
         guard let reading = hub.latest[cup] else { return "—" }
         return String(format: "%.1f °C", reading.celsius)
-    }
-
-    private func role(_ cup: Cup) -> String {
-        switch cup {
-        case .a: "warm"
-        case .b: "room"
-        case .c: "cold"
-        }
     }
 
     private func color(_ cup: Cup) -> Color {

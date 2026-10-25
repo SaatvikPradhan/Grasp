@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Sample research paper</title>
-<!-- Test document for linking notes to a paper. The notes in paper-notes.html get some of it wrong on purpose: see props/TEST-DOCUMENTS.md. -->
+<!-- Test document for linking notes to a paper and for the paper's own math. The notes in paper-notes.html get some of it wrong on purpose, and one table row doesn't match its own k: see props/TEST-DOCUMENTS.md. -->
 <style>
   @page { size: letter; margin: 0.5in; }
   * { box-sizing: border-box; }
@@ -27,7 +27,7 @@
   <h1>Lids, Sleeves and the Cooling of Hot Drinks in Disposable and Ceramic Cups</h1>
   <div class="authors">R. Okafor, M. Lindqvist and J. Tran · Department of Physics, Valley State University · Undergraduate Research Journal 4 (2026)</div>
 
-  <div class="abstract"><b>ABSTRACT</b> We measured how quickly 350 mL of water at 90 °C cools in paper and ceramic cups, with and without a plastic lid and a cardboard sleeve. Each condition was repeated in 12 trials at a room temperature of 21 °C. Cooling followed Newton's law closely (R² above 0.98 in every trial). A lid lowered the cooling constant from 0.031 per minute to 0.019 per minute, so a lidded paper cup took 23.5 minutes to reach 60 °C, compared with 14.2 minutes without a lid. A sleeve made no measurable difference.</div>
+  <div class="abstract"><b>ABSTRACT</b> We measured how quickly 350 mL of water at 90 °C cools in paper and ceramic cups, with and without a plastic lid and a cardboard sleeve. Each condition was repeated in 12 trials at a room temperature of 21 °C. Cooling followed Newton's law closely (R² above 0.98 in every trial). A lid lowered the cooling constant from 0.031 per minute to 0.019 per minute, so a lidded paper cup took 30.0 minutes to reach 60 °C, compared with 18.4 minutes without a lid. A sleeve made no measurable difference.</div>
 
   <div class="cols">
     <h2>1. Methods</h2>
@@ -37,11 +37,11 @@
     <h2>2. Results</h2>
     <table>
       <tr><th>Condition</th><th class="n">k (per min)</th><th class="n">Minutes to 60 °C</th></tr>
-      <tr><td>Paper, no lid</td><td class="n">0.031 ± 0.002</td><td class="n">14.2</td></tr>
-      <tr><td>Paper, lid</td><td class="n">0.019 ± 0.002</td><td class="n">23.5</td></tr>
-      <tr><td>Paper, sleeve</td><td class="n">0.030 ± 0.003</td><td class="n">14.6</td></tr>
-      <tr><td>Paper, lid and sleeve</td><td class="n">0.019 ± 0.002</td><td class="n">23.8</td></tr>
-      <tr><td>Ceramic, no lid</td><td class="n">0.027 ± 0.002</td><td class="n">15.1</td></tr>
+      <tr><td>Paper, no lid</td><td class="n">0.031 ± 0.002</td><td class="n">18.4</td></tr>
+      <tr><td>Paper, lid</td><td class="n">0.019 ± 0.002</td><td class="n">30.0</td></tr>
+      <tr><td>Paper, sleeve</td><td class="n">0.030 ± 0.003</td><td class="n">19.0</td></tr>
+      <tr><td>Paper, lid and sleeve</td><td class="n">0.019 ± 0.002</td><td class="n">30.0</td></tr>
+      <tr><td>Ceramic, no lid</td><td class="n">0.027 ± 0.002</td><td class="n">21.1</td></tr>
       <tr><td>Ceramic, lid</td><td class="n">0.017 ± 0.001</td><td class="n">25.9</td></tr>
     </table>
     <div class="cap">Table 1. Mean cooling constant and time to cool from 90 °C to 60 °C, 12 trials per condition.</div>

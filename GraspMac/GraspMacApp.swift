@@ -1,3 +1,4 @@
+import GraspKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -73,9 +74,27 @@ struct GraspMacApp: App {
                 Divider()
                 Button(lab.isRecording ? "Stop Lab Notes and Write Them Up" : "Start Lab Notes") { Task { await lab.toggle() } }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Compare My Cups with the Paper") { canvas.compareCupsWithPaper() }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Rehearse a Lab Session") { Task { await lab.rehearse() } }
                 Button("Save Lab Notebook") { _ = lab.save() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+            CommandMenu("Bench") {
+                // The simulated probes act out what hands would do at a real bench.
+                ForEach(Cup.allCases) { cup in
+                    Button("Pour Hot Water into Cup \(cup.rawValue)") { simulate(.pour(cup, celsius: 88), "poured into \(cup.rawValue)") }
+                }
+                Divider()
+                ForEach(Cup.allCases) { cup in
+                    Button("Put the Lid on Cup \(cup.rawValue)") { simulate(.lid(cup, on: true), "lid on \(cup.rawValue)") }
+                }
+                Divider()
+                ForEach(Cup.allCases) { cup in
+                    Button("Drop Ice into Cup \(cup.rawValue)") { simulate(.ice(cup), "ice into \(cup.rawValue)") }
+                }
+                Divider()
+                Button("Show Cup Temperatures") { canvas.toggleTemperatures() }
             }
             CommandMenu("Money") {
                 Button("What to Say") { Task { await money.whatToSay() } }
@@ -152,6 +171,27 @@ struct GraspMacApp: App {
                         canvas.showSource(of: .passage(card: card.id, index: index))
                     }
                 case "lab": await lab.rehearse()
+                case "temps": if !canvas.showsTemperatures { canvas.toggleTemperatures() }
+                case "comparecups": canvas.compareCupsWithPaper()
+                case let step where step.hasPrefix("pour:"):
+                    // pour:A, lid:B, ice:C act on the simulated bench.
+                    let cup = Cup(rawValue: String(step.dropFirst(5))) ?? .a
+                    simulate(.pour(cup, celsius: 88), "poured into \(cup.rawValue)")
+                case let step where step.hasPrefix("lid:"):
+                    let cup = Cup(rawValue: String(step.dropFirst(4))) ?? .b
+                    simulate(.lid(cup, on: true), "lid on \(cup.rawValue)")
+                case let step where step.hasPrefix("ice:"):
+                    let cup = Cup(rawValue: String(step.dropFirst(4))) ?? .c
+                    simulate(.ice(cup), "ice into \(cup.rawValue)")
+                case let step where step.hasPrefix("wait"):
+                    // wait30: let the bench run half a minute.
+                    try? await Task.sleep(for: .seconds(Double(step.dropFirst(4)) ?? 10))
+                case let step where step.hasPrefix("hovercited"):
+                    // hovercited7: the seventh thing the newest research card cites, from 1.
+                    let index = (Int(step.dropFirst(10)) ?? 1) - 1
+                    if let card = canvas.cards.last(where: { !canvas.citations(for: $0).isEmpty }) {
+                        canvas.showSource(of: .cited(card: card.id, index: index))
+                    }
                 case let step where step.hasPrefix("hoverstep"):
                     // hoverstep4: the fourth step of the lab notebook.
                     let index = (Int(step.dropFirst(9)) ?? 1) - 1
@@ -179,6 +219,12 @@ struct GraspMacApp: App {
             }
             _ = saveSnapshot(to: URL(filePath: path))
         }
+    }
+
+    /// Acts on the simulated bench and marks it on the live chart. Real probes need real hands.
+    private func simulate(_ action: SimulatedBench.Action, _ label: String) {
+        guard probes.simulate(action) else { return }
+        probes.mark(label)
     }
 
     /// Reads a photo from disk as if the phone had sent it.

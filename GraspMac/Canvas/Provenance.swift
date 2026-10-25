@@ -16,6 +16,16 @@ enum HoverTarget: Hashable {
     case passage(card: UUID, index: Int)
     /// A step in a lab notebook: the frame, the words and the reading at that moment.
     case labStep(card: UUID, index: Int)
+    /// Words on a page that a card cites (a paper's equation, a protocol step, a bill line).
+    case cited(card: UUID, index: Int)
+}
+
+/// Words on a page a card cites, with what they back up.
+struct Citation {
+    var documentID: UUID
+    var cited: Cited
+    var heading: String
+    var detail: String?
 }
 
 /// Where something came from, ready to show.
