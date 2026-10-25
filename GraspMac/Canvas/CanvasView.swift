@@ -6,18 +6,35 @@ struct CanvasView: View {
     @Bindable var pipeline: HandPipeline
     let phone: PhoneLink
     let paper: PaperReader
+    let probes: ProbeHub
+    let voice: VoiceController
+    let money: MoneyMode
+    /// Rendering to a PNG: leaves out the camera preview and drop target, which can't be drawn offscreen.
+    var isSnapshot = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             GridBackground()
 
             ForEach(model.cards) { card in
-                ChartCardView(card: card, isHeld: model.isHeld(card.id))
-                    .frame(width: card.size.width, height: card.size.height)
+                CardView(
+                    card: card,
+                    isHeld: model.isHeld(card.id),
+                    isMergeCandidate: model.mergeCandidates.contains(card.id),
+                    isTrashTarget: model.trashTarget == card.id,
+                    probes: probes
+                )
                     .position(card.center)
-                    .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: card.center)
+                    .animation(
+                        card.isArriving ? .spring(duration: 0.8, bounce: 0.3) : .interactiveSpring(response: 0.28, dampingFraction: 0.82),
+                        value: card.center
+                    )
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+                    // Mouse stand-ins: drag to move (and onto another loan to compare),
+                    // double-click to switch bars and lines.
+                    .onTapGesture(count: 2) { model.toggleStyle(of: card.id) }
                     .gesture(
-                        DragGesture()
+                        DragGesture(minimumDistance: 2)
                             .onChanged { model.mouseDrag(card.id, translation: $0.translation) }
                             .onEnded { _ in model.endMouseDrag() }
                     )
@@ -27,7 +44,7 @@ struct CanvasView: View {
                 .padding(.top, 36)
                 .padding(.leading, 28)
 
-            if model.showDebug {
+            if model.showDebug && !isSnapshot {
                 VStack {
                     Spacer()
                     HandDebugPanel(pipeline: pipeline, hands: model.hands)
@@ -45,6 +62,20 @@ struct CanvasView: View {
             .padding(.top, 36)
             .padding(.trailing, 20)
 
+            VStack {
+                Spacer()
+                VoiceBar(voice: voice, money: money)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 20)
+
+            TrashBin(isHot: model.trashTarget != nil)
+                .position(model.trashCenter)
+                .opacity(model.isTrashVisible ? 1 : 0)
+                .scaleEffect(model.isTrashVisible ? 1 : 0.6)
+                .animation(.spring(duration: 0.3), value: model.isTrashVisible)
+                .allowsHitTesting(false)
+
             // Cursors last so they draw over everything; they never take clicks.
             ForEach(model.hands) { hand in
                 HandCursor(mode: model.cursorState(for: hand))
@@ -53,12 +84,7 @@ struct CanvasView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Drop a photo of a contract to read it without the phone.
-        .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first else { return false }
-            paper.read(fileAt: url)
-            return true
-        }
+        .modifier(PhotoDropTarget(paper: paper, isEnabled: !isSnapshot))
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
@@ -94,27 +120,54 @@ struct CanvasView: View {
             return "Camera failed: \(message)"
         case .running:
             if model.hands.isEmpty { return "Raise a hand in front of the camera." }
-            if model.hands.contains(where: \.isPinching) { return "Move to drag. Turn your wrist to dial." }
-            return "Pinch a chart to grab it."
+            if model.hands.contains(where: \.isPinching) { return "Move to drag. Turn your wrist to dial. Push two loans together to compare." }
+            if model.hands.contains(where: \.isFist) { return "Listening. Open your hand to send." }
+            if model.hands.contains(where: \.isOpenPalm) { return "Swipe an open hand across a chart to switch bars and lines." }
+            return "Pinch a chart to grab it. Make a fist to talk."
+        }
+    }
+}
+
+/// Drop a photo of a contract on the canvas to read it without the phone.
+private struct PhotoDropTarget: ViewModifier {
+    let paper: PaperReader
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first else { return false }
+                paper.read(fileAt: url)
+                return true
+            }
+        } else {
+            content
         }
     }
 }
 
 private struct GridBackground: View {
     var body: some View {
-        Canvas { context, size in
-            let spacing: CGFloat = 28
-            var path = Path()
-            for x in stride(from: 0, through: size.width, by: spacing) {
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-            }
-            for y in stride(from: 0, through: size.height, by: spacing) {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
-            }
-            context.stroke(path, with: .color(Theme.grid), lineWidth: 1)
+        GridLines(spacing: 28)
+            .stroke(Theme.grid, lineWidth: 1)
+            .allowsHitTesting(false)
+    }
+}
+
+/// A plain shape rather than a Canvas, so canvas snapshots render it too.
+private struct GridLines: Shape {
+    let spacing: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for x in stride(from: rect.minX, through: rect.maxX, by: spacing) {
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
         }
-        .allowsHitTesting(false)
+        for y in stride(from: rect.minY, through: rect.maxY, by: spacing) {
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+        }
+        return path
     }
 }

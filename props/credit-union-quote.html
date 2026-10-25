@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demo credit union quote</title>
+<!-- Demo prop for the FNB script (GRASP.md section 5): the credit union pre-approval
+     that gets pushed against the dealer's loan. 6.4% APR; at the dealer's $21,600 and
+     48 months it totals $24,540, $3,416 less than the 72-month pitch. Print and cut out. -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px; background: #fff; font: 14px/1.4 "Helvetica Neue", Arial, sans-serif; color: #10302a; }
+  .card { width: 5.5in; border-radius: 16px; overflow: hidden; border: 1.5px solid #0b5e50; }
+  .top { background: #0b5e50; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: baseline; }
+  .top b { font-size: 18px; letter-spacing: .02em; }
+  .top span { font-size: 12px; opacity: .85; }
+  .body { padding: 18px 20px 20px; }
+  .label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #3b6b62; }
+  .rate { font-size: 56px; font-weight: 800; line-height: 1; margin: 4px 0 2px; }
+  .rate small { font-size: 20px; font-weight: 700; }
+  .lines { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-top: 14px; font-size: 13px; }
+  .lines b { display: block; font-size: 16px; color: #10302a; }
+  .fine { margin-top: 14px; font-size: 10px; color: #3b6b62; }
+  .demo { margin-top: 14px; font-size: 10px; color: #888; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="top"><b>Valley Demo Credit Union</b><span>Auto loan pre-approval</span></div>
+    <div class="body">
+      <div class="label">You're pre-approved</div>
+      <div class="rate">6.40% <small>APR</small></div>
+      <div>for a new or used vehicle purchase</div>
+      <div class="lines">
+        <div>Approved up to<b>$25,000</b></div>
+        <div>Terms available<b>36 to 72 months</b></div>
+        <div>Applicant<b>Alex Student</b></div>
+        <div>Valid through<b>December 31, 2026</b></div>
+      </div>
+      <div class="fine">Bring this certificate to the dealer. Rate based on a 48-month term with automatic payments; other terms may differ.</div>
+    </div>
+  </div>
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL LOAN OFFER</div>
+</body>
+</html>

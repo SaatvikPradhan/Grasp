@@ -23,6 +23,23 @@ public struct GestureConfig: Sendable, Equatable {
     public var lostHandGrace: Double = 0.25
     /// Farthest a wrist may move between frames (camera units) and still count as the same hand.
     public var matchDistance: Double = 0.3
+    /// A palm is open when its fingertips average at least this many palm lengths from the wrist.
+    public var openPalm: Double = 1.5
+    /// A swipe is an open palm moving this far sideways (canvas units)…
+    public var swipeDistance: Double = 0.22
+    /// …within this many seconds…
+    public var swipeWindow: Double = 0.35
+    /// …after which that hand can't swipe again for this long.
+    public var swipeCooldown: Double = 0.8
+    /// A fist (grab the mic, to talk): the index tip within this many palm lengths of the
+    /// wrist, and the other fingertips within `fistOthers`. A pinch keeps the index out further.
+    public var fistIndex: Double = 1.25
+    public var fistOthers: Double = 1.2
+    /// A fist ends once the fingers open past these.
+    public var fistIndexExit: Double = 1.45
+    public var fistOthersExit: Double = 1.4
+    /// Seconds a fist is held before it counts, so passing through one doesn't.
+    public var fistHold: Double = 0.25
 
     public init() {}
 
@@ -56,14 +73,32 @@ public struct TrackedHand: Identifiable, Sendable, Equatable {
     public var pinchRatio: Double
     /// Vision's points for this frame, in camera units, for drawing a skeleton.
     public var joints: [HandJoint: CGPoint]
+    /// Fingers spread, as for a swipe.
+    public var isOpenPalm = false
+    /// A held fist, like gripping a microphone: talk while it's closed.
+    public var isFist = false
+    /// Set only on the frame a swipe is recognized.
+    public var swipe: Swipe?
 
     public var isPinching: Bool { pinch != .open }
 }
 
-/// Turns raw hand points into cursors, pinches, drags and twists.
+/// An open hand sweeping sideways: switches the chart under it between bars and lines.
+public struct Swipe: Sendable, Equatable {
+    public enum Direction: Sendable, Equatable {
+        case left, right
+    }
+
+    public var direction: Direction
+    /// The cursor where the swipe began, in canvas units; the card there is the one swiped.
+    public var origin: CGPoint
+}
+
+/// Turns raw hand points into cursors, pinches, drags, twists, swipes and fists.
 ///
 /// Feed it every camera frame with `update(_:)`. It matches hands across frames, smooths
-/// the cursor, applies pinch hysteresis, and decides whether each pinch is a drag or a twist.
+/// the cursor, applies pinch hysteresis, decides whether each pinch is a drag or a twist,
+/// spots open-palm swipes, and tells a fist (talk) from a pinch (grab).
 public struct GestureEngine: Sendable {
     public var config: GestureConfig
     public private(set) var hands: [TrackedHand] = []
@@ -123,6 +158,12 @@ private struct Measurement {
     var pinchRatio: Double?
     /// Direction from wrist to middle knuckle, in radians, y down.
     var angle: Double
+    /// Average fingertip distance from the wrist over palm length; nil without enough fingertips.
+    var openness: Double?
+    /// Index fingertip distance from the wrist over palm length.
+    var indexReach: Double?
+    /// Middle, ring and little fingertips' average distance from the wrist over palm length.
+    var otherReach: Double?
 
     init?(_ sample: HandSample, aspect: Double) {
         guard let wrist = sample.joints[.wrist], let knuckle = sample.joints[.middleMCP] else { return nil }
@@ -138,6 +179,16 @@ private struct Measurement {
         if let thumb = sample.joints[.thumbTip], let index = sample.joints[.indexTip] {
             pinchPoint = CGPoint(x: (thumb.x + index.x) / 2, y: (thumb.y + index.y) / 2)
             pinchRatio = distance(square(thumb), square(index)) / palm
+        }
+        func reach(_ point: CGPoint) -> Double { distance(square(point), square(wrist)) / palm }
+        let tips = [HandJoint.indexTip, .middleTip, .ringTip, .littleTip].compactMap { sample.joints[$0] }
+        if tips.count >= 3 {
+            openness = tips.map(reach).reduce(0, +) / Double(tips.count)
+        }
+        indexReach = sample.joints[.indexTip].map(reach)
+        let others = [HandJoint.middleTip, .ringTip, .littleTip].compactMap { sample.joints[$0] }
+        if others.count >= 2 {
+            otherReach = others.map(reach).reduce(0, +) / Double(others.count)
         }
     }
 }
@@ -155,6 +206,12 @@ private struct HandState: Sendable {
     private var pinchStartWrist = CGPoint.zero
     private var pinchStartAngle = 0.0
     private var twistStartAngle = 0.0
+    /// Recent wrist positions (canvas units) while the palm is open, for spotting a swipe.
+    private var swipeTrail: [(time: Double, wrist: CGPoint, cursor: CGPoint)] = []
+    private var lastSwipeAt = -Double.infinity
+    /// The hand is shaped like a fist right now (with hysteresis), and since when.
+    private var fistShape = false
+    private var fistSince: Double?
 
     init(id: Int, measurement m: Measurement, at time: Double, config: GestureConfig) {
         cursorFilter = PointFilter(minCutoff: config.smoothingMinCutoff, beta: config.smoothingBeta)
@@ -165,7 +222,9 @@ private struct HandState: Sendable {
         rawAngle = m.angle
         unwrappedAngle = m.angle
         angle = angleFilter.filter(m.angle, at: time)
+        updateFist(m, at: time, config: config)
         updatePinch(m, config: config)
+        updateSwipe(m, at: time, config: config)
     }
 
     mutating func update(with m: Measurement, at time: Double, config: GestureConfig) {
@@ -186,13 +245,61 @@ private struct HandState: Sendable {
         unwrappedAngle += delta
         angle = angleFilter.filter(unwrappedAngle, at: time)
 
+        updateFist(m, at: time, config: config)
         updatePinch(m, config: config)
+        updateSwipe(m, at: time, config: config)
+    }
+
+    private mutating func updateFist(_ m: Measurement, at time: Double, config: GestureConfig) {
+        guard let index = m.indexReach, let others = m.otherReach else { return }
+        if fistShape {
+            fistShape = index <= config.fistIndexExit && others <= config.fistOthersExit
+        } else {
+            fistShape = index < config.fistIndex && others < config.fistOthers
+        }
+        if fistShape {
+            if fistSince == nil { fistSince = time }
+        } else {
+            fistSince = nil
+        }
+        // A hand already holding a card keeps holding it; curling the fingers doesn't start talking.
+        let holdsCard = hand.pinch == .drag || hand.pinch == .twist
+        hand.isFist = !holdsCard && time - (fistSince ?? time) >= config.fistHold && fistSince != nil
+    }
+
+    static let minimumHysteresis = 0.05
+
+    private mutating func updateSwipe(_ m: Measurement, at time: Double, config: GestureConfig) {
+        hand.swipe = nil
+        hand.isOpenPalm = (m.openness ?? 0) >= config.openPalm
+        guard hand.isOpenPalm, hand.pinch == .open else {
+            swipeTrail.removeAll()
+            return
+        }
+
+        let wrist = config.canvasPoint(fromCamera: m.wrist)
+        swipeTrail.append((time, wrist, hand.cursor))
+        swipeTrail.removeAll { time - $0.time > config.swipeWindow }
+        guard let start = swipeTrail.first, time - lastSwipeAt >= config.swipeCooldown else { return }
+
+        let dx = wrist.x - start.wrist.x
+        let dy = wrist.y - start.wrist.y
+        guard abs(dx) >= config.swipeDistance, abs(dy) < abs(dx) * 0.7 else { return }
+        hand.swipe = Swipe(direction: dx > 0 ? .right : .left, origin: start.cursor)
+        lastSwipeAt = time
+        swipeTrail.removeAll()
     }
 
     private mutating func updatePinch(_ m: Measurement, config: GestureConfig) {
         // Without both fingertips, hold the last pinch state rather than dropping a grab.
         guard let ratio = m.pinchRatio else { return }
         hand.pinchRatio = ratio
+
+        // A fist brings the thumb to the index too, but it isn't a pinch.
+        if fistShape, hand.pinch == .open || hand.pinch == .undecided {
+            hand.pinch = .open
+            return
+        }
 
         if hand.pinch == .open {
             guard ratio < config.pinchEnter else { return }
@@ -202,7 +309,9 @@ private struct HandState: Sendable {
             pinchStartAngle = angle
             return
         }
-        if ratio > config.pinchExit {
+        // Release needs a clearly wider gap than grabbing, or the pinch flickers on and off
+        // at the threshold; enforce that even if the sliders are set too close.
+        if ratio > max(config.pinchExit, config.pinchEnter + Self.minimumHysteresis) {
             hand.pinch = .open
             hand.twist = 0
             return

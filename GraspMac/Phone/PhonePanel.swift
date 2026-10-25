@@ -28,8 +28,10 @@ struct PhonePanel: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text("\(Int(phone.framesPerSecond.rounded())) fps live")
+                // Captures land on the canvas as cards, so the panel only counts them.
+                Text("\(Int(phone.framesPerSecond.rounded())) fps live · \(phone.captureCount) sent to the canvas")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.muted)
             } else if !isConnected {
@@ -37,17 +39,6 @@ struct PhonePanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let capture = phone.lastCapture {
-                Text("CAPTURE \(phone.captureCount)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.muted)
-                Image(nsImage: capture)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
         .foregroundStyle(Theme.ink)

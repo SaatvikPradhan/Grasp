@@ -90,6 +90,8 @@ Tags: **[Demo]** build for the demo · **[If time]** · **[Next]** pitch as futu
 - **[Next] Replay.** Scrub the timeline: bench photo and data at the same moment. (Build if time; strong for research judges.)
 
 ### Money mode
+Built (Oct 24): offer reader, add-ons merged across contract and sticker, true-cost chart, twist, compare, hears the pitch (consent prompt, `PitchChecker`), what to say (Gemini wording checked against Swift's numbers, read aloud by ElevenLabs), decision summary PDF (⌘E). Money menu: ⌘J what to say, ⌘⇧L listen to the salesperson.
+
 - **[Demo] Offer reader.** Car loans, leases, credit card offers, BNPL, aid letters: rate, term, fees, penalties.
 - **[Demo] Add-on fee spotter.** Paint protection, nitrogen tires, large doc fees.
 - **[Demo] True-cost chart.** Amount financed vs interest.
@@ -105,14 +107,16 @@ Tags: **[Demo]** build for the demo · **[If time]** · **[Next]** pitch as futu
 
 ---
 
-## 4. Gestures (exactly four)
+## 4. Gestures
 
 | Gesture | You do | It does | Detection (suggested starting values) |
 |---|---|---|---|
-| **Pinch and drag** | Thumb to index, move, release | Grab and move the chart under the hand | Distance(thumbTip, indexTip) in normalized coords: enter pinch < 0.04, exit > 0.06 (hysteresis) |
+| **Pinch and drag** | Thumb to index, move, release | Grab and move the chart under the hand | Thumb-to-index gap over palm length (wrist → middle knuckle): enter < 0.30, exit > 0.45 (hysteresis); built, sliders in the ⌘D panel |
 | **Twist** | Pinch, then rotate wrist like a knob | Dial a value (term, rate, k, Ea) | Angle of vector wrist → middleMCP; map delta angle to value with a gain; snap to steps where useful |
-| **Push together** | Pinch one chart with each hand, bring hands together | Merge two charts into one comparison | Two pinching hands, distance shrinking faster than a threshold over ~300 ms |
-| **Swipe** | Open hand sweeps sideways | Switch chart type (line ↔ bar) | Open palm (fingertips far from wrist) + wrist x-velocity above threshold |
+| **Push together** | Pinch one chart with each hand, bring hands together | Merge two charts into one comparison | Built as overlap: two loan cards light up green at 15% overlap and merge at 45% (works with one hand, two hands or the mouse) |
+| **Fist** | Close your hand like gripping a mic | Talk to Grasp; open the hand to send (Space works too) | Built: index tip < 1.25 palm lengths from the wrist and the other tips < 1.2, held 0.25 s; a fist never starts a pinch |
+| **Trash** | Drag a card to the bin (bottom right, shows while holding) | Delete the card | Built: let go within 110 pt of the bin; ⌫ deletes the front card, ⌘⇧⌫ clears all |
+| **Swipe** | Open hand sweeps sideways | Switch chart type (line ↔ bar) | Built: fingertips ≥ 1.5 palm lengths from the wrist, wrist moves ≥ 0.22 of the canvas sideways within 0.35 s, 0.8 s cooldown |
 
 - `VNDetectHumanHandPoseRequest`, `maximumHandCount = 2`, run on webcam frames at ~30 fps.
 - Mirror front-camera x. Smooth positions (exponential moving average α≈0.4, or a One Euro filter).
@@ -161,19 +165,20 @@ Grasp/
 │  ├─ Models/             Reading, LabEvent, LoanTerms, ChartSpec, CupState, Session
 │  ├─ Math/               LoanMath, OneEuroFilter, LeastSquares, Arrhenius, FreezingPoint
 │  ├─ Gestures/           HandSample, GestureEngine (pure logic, unit tested; reusable on the iPhone fallback)
+│  ├─ Hardware/           ProbeProtocol (serial lines ↔ messages), SimulatedBench
 │  ├─ AI/                 APIKeys, GeminiClient (+ JSON schemas), Prompts
 │  └─ Link/               LinkMessage (Codable), MultipeerLink
 ├─ GraspMac/              macOS app (the brain)
-│  ├─ Canvas/             CanvasView, CanvasModel, ChartCard (spring motion), HandCursor
+│  ├─ Canvas/             CanvasModel, Card (loan, comparison, temperatures, scan), card views, HandCursor, CanvasSnapshot
 │  ├─ Hands/              WebcamCapture, HandTracker (Vision), HandPipeline, debug panel
-│  ├─ Voice/              SpeechListener (SFSpeechRecognizer), VoiceOut (ElevenLabs)
+│  ├─ Voice/              SpeechListener (SFSpeechRecognizer), VoiceController (hold Space), VoiceBar; VoiceOut (ElevenLabs) next
 │  ├─ Hardware/           SerialPort, ProbeSource (+ SimulatedProbeSource), LEDStrip, ReceiptPrinter
-│  ├─ Modes/              ResearchMode, MoneyMode
+│  ├─ Modes/              PaperReader + PageText (Gemini reads, Vision boxes), PaperPanel; ResearchMode, MoneyMode next
 │  ├─ Bench/              CupColorTimer (pixel averages per mat circle), ActionLogger
 │  └─ Export/             NotebookExporter (MD, CSV, .ipynb, Methods), SummaryPDF, QR
 ├─ GraspPhone/            iOS app (the eye)
-│  ├─ CameraView, FrameSender (1–2 fps live + sharp capture on demand)
-│  ├─ HighlightOverlay (boxes sent back from the Mac), FlingDetector (CoreMotion)
+│  ├─ CameraView (+ scan result with highlights), FrameSender (~4 fps live + sharp capture), PhoneModel
+│  ├─ HighlightOverlay (boxes sent back from the Mac), FlingDetector (hold still on the paper, then flick the top away; Flick on/off button)
 │  └─ PressureBuzz (haptics on message)
 └─ firmware/              Arduino or ESP32 sketch
 ```

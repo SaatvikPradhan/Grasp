@@ -45,19 +45,44 @@ public struct GeminiClient: Sendable {
         }
         parts.append(["text": prompt])
 
-        var generation: [String: Any] = [
-            "responseMimeType": "application/json",
-            "responseSchema": schema,
-            "temperature": 0,
-        ]
+        var generation = generationConfig
+        generation["responseMimeType"] = "application/json"
+        generation["responseSchema"] = schema
+        let answer = try await send([
+            "contents": [["role": "user", "parts": parts]],
+            "generationConfig": generation,
+        ])
+
+        let text = answer.parts.compactMap(\.text).joined()
+        guard !text.isEmpty else { throw Failure.noAnswer(reason: answer.reason) }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(T.self, from: Data(text.utf8))
+    }
+
+    /// Makes Gemini pick exactly one of `functions` (Gemini function declarations) for `prompt`.
+    public func call(_ functions: [[String: Any]], prompt: String) async throws -> FunctionCall {
+        let answer = try await send([
+            "contents": [["role": "user", "parts": [["text": prompt]]]],
+            "tools": [["functionDeclarations": functions]],
+            "toolConfig": ["functionCallingConfig": ["mode": "ANY"]],
+            "generationConfig": generationConfig,
+        ])
+        guard let call = answer.parts.compactMap(\.functionCall).first else {
+            throw Failure.noAnswer(reason: answer.reason)
+        }
+        return FunctionCall(name: call.name, arguments: call.args ?? [:])
+    }
+
+    private var generationConfig: [String: Any] {
+        var generation: [String: Any] = ["temperature": 0]
         if let thinkingLevel {
             generation["thinkingConfig"] = ["thinkingLevel": thinkingLevel]
         }
-        let body: [String: Any] = [
-            "contents": [["role": "user", "parts": parts]],
-            "generationConfig": generation,
-        ]
+        return generation
+    }
 
+    private func send(_ body: [String: Any]) async throws -> Answer {
         var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -71,33 +96,75 @@ public struct GeminiClient: Sendable {
             let message = (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.message
             throw Failure.http(status: status, message: message ?? String(decoding: data.prefix(300), as: UTF8.self))
         }
-
-        let answer = try JSONDecoder().decode(Answer.self, from: data)
-        guard let text = answer.candidates?.first?.content?.parts?.compactMap(\.text).joined(), !text.isEmpty else {
-            let reason = answer.promptFeedback?.blockReason ?? answer.candidates?.first?.finishReason ?? "empty"
-            throw Failure.noAnswer(reason: reason)
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(T.self, from: Data(text.utf8))
+        return try JSONDecoder().decode(Answer.self, from: data)
     }
 
     private struct Answer: Decodable {
         struct Candidate: Decodable {
             struct Content: Decodable {
-                struct Part: Decodable { var text: String? }
                 var parts: [Part]?
             }
             var content: Content?
             var finishReason: String?
         }
+        struct Part: Decodable {
+            struct Call: Decodable {
+                var name: String
+                var args: [String: FunctionCall.Value]?
+            }
+            var text: String?
+            var functionCall: Call?
+        }
         struct Feedback: Decodable { var blockReason: String? }
         var candidates: [Candidate]?
         var promptFeedback: Feedback?
+
+        var parts: [Part] { candidates?.first?.content?.parts ?? [] }
+        var reason: String { promptFeedback?.blockReason ?? candidates?.first?.finishReason ?? "empty" }
     }
 
     private struct ErrorBody: Decodable {
         struct Detail: Decodable { var message: String }
         var error: Detail
+    }
+}
+
+/// The function Gemini chose, with its arguments.
+public struct FunctionCall: Sendable, Equatable {
+    /// An argument value: Gemini's function arguments are plain JSON.
+    public enum Value: Decodable, Sendable, Equatable {
+        case number(Double)
+        case text(String)
+        case flag(Bool)
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let flag = try? container.decode(Bool.self) {
+                self = .flag(flag)
+            } else if let number = try? container.decode(Double.self) {
+                self = .number(number)
+            } else {
+                self = .text(try container.decode(String.self))
+            }
+        }
+    }
+
+    public var name: String
+    public var arguments: [String: Value]
+
+    public init(name: String, arguments: [String: Value] = [:]) {
+        self.name = name
+        self.arguments = arguments
+    }
+
+    public func number(_ key: String) -> Double? {
+        if case .number(let value)? = arguments[key] { return value }
+        if case .text(let text)? = arguments[key] { return Double(text) }
+        return nil
+    }
+
+    public func flag(_ key: String) -> Bool? {
+        if case .flag(let value)? = arguments[key] { return value }
+        return nil
     }
 }

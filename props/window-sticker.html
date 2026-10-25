@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demo window sticker</title>
+<!-- Demo prop for the FNB script (GRASP.md section 5): the price sticker plus the dealer's
+     add-on sticker. Print on letter paper and tape to the toy car or cardboard door.
+     Add-ons total $1,194 (nitrogen tires $299 + paint protection $895). -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #fff; color: #111; font: 14px/1.4 "Helvetica Neue", Arial, sans-serif; width: 8.5in; }
+  .stickers { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start; }
+  .monroney { border: 2px solid #111; padding: 16px 18px; }
+  .monroney h1 { font-size: 22px; margin: 0 0 2px; }
+  .monroney .sub { font-size: 12px; color: #444; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  td { padding: 5px 4px; border-bottom: 1px solid #ccc; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 700; font-size: 16px; border-top: 2px solid #111; border-bottom: 0; }
+  .mpg { display: flex; gap: 18px; margin-top: 14px; font-size: 12px; }
+  .mpg b { display: block; font-size: 26px; }
+  .addon { border: 3px solid #b3161b; padding: 16px 18px; background: #fff7f5; }
+  .addon h2 { color: #b3161b; font-size: 20px; margin: 0 0 4px; letter-spacing: .02em; }
+  .addon .sub { font-size: 12px; color: #6a1d1d; margin-bottom: 12px; }
+  .addon tr.total td { color: #b3161b; }
+  .addon .fine { font-size: 10px; color: #6a1d1d; margin-top: 10px; }
+  .demo { margin-top: 20px; text-align: center; font-size: 10px; color: #888; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="stickers">
+    <div class="monroney">
+      <h1>2021 Honda Civic LX Sedan</h1>
+      <div class="sub">Used · 31,240 miles · Stock #V24-0718 · Valley Demo Motors</div>
+      <table>
+        <tr><td>Listed price</td><td class="n">$19,900</td></tr>
+        <tr><td>2.0L 4-cylinder, CVT automatic</td><td class="n">Included</td></tr>
+        <tr><td>Apple CarPlay / Android Auto</td><td class="n">Included</td></tr>
+        <tr><td>Honda Sensing safety suite</td><td class="n">Included</td></tr>
+        <tr class="total"><td>Vehicle price</td><td class="n">$19,900</td></tr>
+      </table>
+      <div class="mpg"><div><b>31</b>city MPG</div><div><b>40</b>highway MPG</div><div><b>34</b>combined</div></div>
+    </div>
+
+    <div class="addon">
+      <h2>DEALER ADDED EQUIPMENT</h2>
+      <div class="sub">Installed by Valley Demo Motors</div>
+      <table>
+        <tr><td>Nitrogen-filled tires</td><td class="n">$299</td></tr>
+        <tr><td>Paint and fabric protection</td><td class="n">$895</td></tr>
+        <tr class="total"><td>Total dealer add-ons</td><td class="n">$1,194</td></tr>
+      </table>
+      <div class="fine">Dealer-added items are optional and not required to purchase or finance this vehicle.</div>
+    </div>
+  </div>
+
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL VEHICLE LISTING</div>
+</body>
+</html>

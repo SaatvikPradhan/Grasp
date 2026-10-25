@@ -3,7 +3,15 @@ import GraspKit
 import Observation
 import UIKit
 
-/// The phone's side of Grasp: camera in, frames out to the Mac.
+/// A capture as the phone shows it: the photo, then the Mac's boxes once it has read it.
+struct PhoneScan: Identifiable {
+    let id: UUID
+    var image: UIImage
+    /// Nil until the Mac answers.
+    var highlights: [LinkHighlight]?
+}
+
+/// The phone's side of Grasp: camera in, frames out to the Mac, highlights back.
 @MainActor @Observable
 final class PhoneModel {
     enum CameraStatus {
@@ -15,14 +23,25 @@ final class PhoneModel {
     private(set) var linkState = MultipeerLink.State.searching
     private(set) var cameraStatus = CameraStatus.starting
     private(set) var roundTripMs: Double?
-    private(set) var capturesSent = 0
+    /// The last capture, shown over the camera until dismissed.
+    var scan: PhoneScan?
+    /// Bumped on every capture, to flash the screen.
+    private(set) var flashCount = 0
     var isLive = true {
         didSet { sender.setLive(isLive) }
+    }
+    /// Flick the phone to send. Remembered between launches; off stops all motion sensing.
+    var isFlickEnabled = UserDefaults.standard.object(forKey: "flickToSend") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(isFlickEnabled, forKey: "flickToSend")
+            if isFlickEnabled { fling.start() } else { fling.stop() }
+        }
     }
 
     @ObservationIgnored let camera = PhoneCamera()
     @ObservationIgnored private let link = MultipeerLink(role: .guest, displayName: UIDevice.current.name)
     @ObservationIgnored private lazy var sender = FrameSender(link: link)
+    @ObservationIgnored private let fling = FlingDetector()
     @ObservationIgnored private var testPattern: DispatchSourceTimer?
     @ObservationIgnored private var started = false
 
@@ -41,10 +60,18 @@ final class PhoneModel {
             if case .connected = state {} else { self?.roundTripMs = nil }
         }
         link.onMessage = { [weak self] message in
-            guard case .received(let frameID, let sentAt) = message else { return }
-            self?.roundTripMs = sender.acknowledge(frameID: frameID, sentAt: sentAt)
+            self?.handle(message)
+        }
+        sender.onCapture = { [weak self] id, jpeg in
+            guard let image = UIImage(data: jpeg) else { return }
+            self?.scan = PhoneScan(id: id, image: image)
+        }
+        fling.onFling = { [weak self] in
+            // The phone is blurry mid-flick, so send the frame from just before it.
+            self?.capture(lookBack: 0.3)
         }
         link.start()
+        if isFlickEnabled { fling.start() }
 
         #if targetEnvironment(simulator)
         startTestPattern(into: sender)
@@ -55,15 +82,36 @@ final class PhoneModel {
         #endif
     }
 
-    func capture() {
-        sender.requestCapture()
-        capturesSent += 1
+    func capture(lookBack: Double = 0) {
+        guard isConnected else { return }
+        sender.requestCapture(lookBack: lookBack)
+        flashCount += 1
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
-    /// A numbered, color-cycling frame ten times a second, so the link can be tested without a camera.
+    private func handle(_ message: LinkMessage) {
+        switch message {
+        case .received(let frameID, let sentAt):
+            roundTripMs = sender.acknowledge(frameID: frameID, sentAt: sentAt)
+        case .highlights(let captureID, let boxes):
+            guard scan?.id == captureID else { return }
+            scan?.highlights = boxes
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .frame:
+            break
+        }
+    }
+
+    /// The simulator has no camera: it sends a numbered, color-cycling frame ten times a
+    /// second, and the demo props in turn (contract, window sticker, credit union quote)
+    /// when you press the shutter, so the whole money flow can be rehearsed without an iPhone.
     private func startTestPattern(into sender: FrameSender) {
+        let props = ["SimulatorProp1-contract", "SimulatorProp2-sticker", "SimulatorProp3-quote"]
+            .compactMap { Bundle.main.url(forResource: $0, withExtension: "jpg").flatMap { CIImage(contentsOf: $0) } }
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "grasp.phone.testpattern"))
         var count = 0
+        var nextProp = 0
+        var lastSent = 0
         timer.schedule(deadline: .now(), repeating: .milliseconds(100))
         timer.setEventHandler {
             count += 1
@@ -77,8 +125,12 @@ final class PhoneModel {
                     withAttributes: [.font: UIFont.boldSystemFont(ofSize: 110), .foregroundColor: UIColor.white]
                 )
             }
-            if let cgImage = image.cgImage {
-                sender.offer(CIImage(cgImage: cgImage))
+            guard let cgImage = image.cgImage else { return }
+            sender.offer(CIImage(cgImage: cgImage), captureImage: props.isEmpty ? nil : props[nextProp % props.count])
+            // Move on to the next prop once one has gone out as a capture.
+            if sender.capturesSent != lastSent {
+                lastSent = sender.capturesSent
+                nextProp += 1
             }
         }
         timer.resume()

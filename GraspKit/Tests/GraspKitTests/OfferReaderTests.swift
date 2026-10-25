@@ -69,6 +69,26 @@ struct LiveGeminiTests {
         #expect(reading.addOnTotal == 895)
         #expect(reading.discrepancies.isEmpty)
     }
+
+    @Test(.enabled(if: key != nil)) func readsTheWindowSticker() async throws {
+        let reading = try await read("sticker-photo")
+        #expect(reading.documentType == .windowSticker)
+        #expect(reading.addOnTotal == 1_194)   // not doubled by the "Total dealer add-ons" line
+        #expect(reading.addOns.count == 2)
+        #expect(reading.loan == nil)
+    }
+
+    @Test(.enabled(if: key != nil)) func readsTheCreditUnionQuote() async throws {
+        let reading = try await read("quote-photo")
+        #expect(reading.documentType == .loanQuote)
+        #expect(reading.aprPercent == 6.4)
+        #expect(reading.addOns.isEmpty)
+    }
+
+    private func read(_ fixture: String) async throws -> OfferReading {
+        let url = try #require(Bundle.module.url(forResource: fixture, withExtension: "jpg", subdirectory: "Fixtures"))
+        return try await OfferReader(client: GeminiClient(apiKey: Self.key!)).read(jpeg: Data(contentsOf: url))
+    }
 }
 
 /// 8.9 / 100 is 0.08900000000000001 in floating point, so compare the rate loosely.

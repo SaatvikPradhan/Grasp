@@ -88,19 +88,17 @@ public final class MultipeerLink: NSObject, @unchecked Sendable {
 
 extension MultipeerLink: MCSessionDelegate {
     public func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-        switch state {
-        case .connected:
-            report(.connected(peer: peerID.displayName))
-        case .connecting:
+        // Events from different peers can arrive in any order (a phone app restarting leaves its
+        // old peer to time out), so report what the session holds now, not just this event.
+        if let connected = session.connectedPeers.first {
+            report(.connected(peer: connected.displayName))
+        } else if state == .connecting {
             report(.connecting(peer: peerID.displayName))
-        case .notConnected:
-            guard session.connectedPeers.isEmpty else { return }
+        } else {
             report(.searching)
             // A browser reports each peer once, so restart it to find the Mac again.
             browser?.stopBrowsingForPeers()
             browser?.startBrowsingForPeers()
-        @unknown default:
-            break
         }
     }
 

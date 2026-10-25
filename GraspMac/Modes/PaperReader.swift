@@ -4,7 +4,9 @@ import ImageIO
 import Observation
 import UniformTypeIdentifiers
 
-/// Sends a photo of the paper (contract, sticker, quote) to Gemini and puts the result on the canvas.
+/// Reads the paper in front of you (contract, sticker, quote). Each photo lands on the
+/// canvas as a scan card, Gemini reads it, and the card becomes a chart. Photos from the
+/// phone also get their terms and add-ons boxed and sent back.
 @MainActor @Observable
 final class PaperReader {
     enum State: Equatable {
@@ -14,34 +16,55 @@ final class PaperReader {
         case failed(String)
     }
 
+    /// The most recent read, for the panel.
     private(set) var state = State.idle
     private(set) var photo: NSImage?
+    /// Called with boxes to draw on a phone capture once it has been read.
+    @ObservationIgnored var onHighlights: ((UUID, [LinkHighlight]) -> Void)?
 
     @ObservationIgnored private let canvas: CanvasModel
-    @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var latestCardID: UUID?
 
     init(canvas: CanvasModel) {
         self.canvas = canvas
     }
 
-    func read(jpeg: Data) {
-        guard let client = GeminiClient.fromAppKeys else {
-            state = .failed(GeminiClient.Failure.missingKey.localizedDescription)
+    /// Reads a photo. `captureID` is set for photos from the phone, so highlights can go back.
+    func read(jpeg: Data, captureID: UUID? = nil) {
+        guard let image = NSImage(data: jpeg) else {
+            state = .failed("Couldn't open that image.")
             return
         }
-        task?.cancel()
-        photo = NSImage(data: jpeg)
+        let cardID = canvas.addScan(image)
+        latestCardID = cardID
+        photo = image
+
+        guard let client = GeminiClient.fromAppKeys else {
+            let message = GeminiClient.Failure.missingKey.localizedDescription
+            state = .failed(message)
+            canvas.failScan(cardID, message: message)
+            return
+        }
         state = .reading
         let started = Date()
-        task = Task {
+
+        Task {
+            // Vision runs while Gemini reads, so the boxes are ready when the values are.
+            async let lines = captureID == nil ? [] : PageText.recognize(jpeg: jpeg)
             do {
                 let reading = try await OfferReader(client: client).read(jpeg: jpeg)
-                guard !Task.isCancelled else { return }
-                state = .read(reading, seconds: Date().timeIntervalSince(started))
-                canvas.showOffer(reading)
+                if latestCardID == cardID {
+                    state = .read(reading, seconds: Date().timeIntervalSince(started))
+                }
+                canvas.finishScan(cardID, with: reading)
+                if let captureID {
+                    onHighlights?(captureID, PageText.highlights(for: reading, in: await lines))
+                }
             } catch {
-                guard !Task.isCancelled else { return }
-                state = .failed(error.localizedDescription)
+                if latestCardID == cardID {
+                    state = .failed(error.localizedDescription)
+                }
+                canvas.failScan(cardID, message: error.localizedDescription)
             }
         }
     }

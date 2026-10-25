@@ -16,7 +16,8 @@ public struct OfferReader: Sendable {
     Read this car purchase document. Copy numbers exactly as printed; do not calculate anything.
     document_type: loan_contract for a signed or unsigned financing contract, window_sticker for a \
     price sticker or dealer add-on sticker, loan_quote for a lender's pre-approval or rate quote, otherwise other.
-    fees: every itemized charge other than the cash price and the down payment. is_addon is true for \
+    fees: every itemized charge other than the cash price and the down payment, each once; never a \
+    subtotal or total line. is_addon is true for \
     optional dealer extras (paint or fabric protection, nitrogen tires, VIN etching, service contracts, \
     GAP that was purchased) and false for tax, title, registration and documentary fees.
     apr_percent is the annual percentage rate as printed, for example 8.9 for 8.90%.

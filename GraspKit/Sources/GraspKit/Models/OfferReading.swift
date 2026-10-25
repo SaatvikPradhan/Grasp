@@ -71,6 +71,22 @@ public struct OfferReading: Codable, Sendable, Equatable {
         return found
     }
 
+    /// What the demo contract (props/contract.html) reads as, so the demo works before any scan.
+    public static let demoContract = OfferReading(
+        documentType: .loanContract,
+        cashPrice: 19_900,
+        fees: [
+            Fee(name: "Documentary fee", amount: 499, isAddon: false),
+            Fee(name: "Paint and fabric protection", amount: 895, isAddon: true),
+            Fee(name: "Sales tax, title and registration", amount: 1_306, isAddon: false),
+        ],
+        downPayment: 1_000,
+        amountFinanced: 21_600,
+        aprPercent: 8.9,
+        termMonths: 72,
+        monthlyPayment: 388.28
+    )
+
     private func dollars(_ value: Double) -> String {
         value.formatted(.currency(code: "USD"))
     }

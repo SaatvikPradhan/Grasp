@@ -8,13 +8,12 @@ import SystemConfiguration
 final class PhoneLink {
     private(set) var state = MultipeerLink.State.searching
     private(set) var liveImage: NSImage?
-    private(set) var lastCapture: NSImage?
     private(set) var captureCount = 0
     /// The phone's measured round trip; half of it is roughly how long a frame takes to arrive.
     private(set) var roundTripMs: Double?
     private(set) var framesPerSecond = 0.0
-    /// Called with the JPEG of every capture the phone sends.
-    @ObservationIgnored var onCapture: ((Data) -> Void)?
+    /// Called with the ID and JPEG of every capture the phone sends.
+    @ObservationIgnored var onCapture: ((UUID, Data) -> Void)?
 
     @ObservationIgnored private let link = MultipeerLink(
         role: .host,
@@ -45,16 +44,19 @@ final class PhoneLink {
         link.send(.received(frameID: frame.id, sentAt: frame.sentAt))
 
         if let ms = frame.roundTripMs { roundTripMs = ms }
-        let image = NSImage(data: frame.jpeg)
         switch frame.purpose {
         case .live:
-            liveImage = image
+            liveImage = NSImage(data: frame.jpeg)
             countFrame()
         case .capture:
-            lastCapture = image
             captureCount += 1
-            onCapture?(frame.jpeg)
+            onCapture?(frame.id, frame.jpeg)
         }
+    }
+
+    /// Boxes for the phone to draw on one of its captures.
+    func sendHighlights(_ boxes: [LinkHighlight], for captureID: UUID) {
+        link.send(.highlights(captureID: captureID, boxes: boxes))
     }
 
     private func countFrame() {

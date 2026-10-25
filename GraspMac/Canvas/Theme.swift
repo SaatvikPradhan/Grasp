@@ -12,8 +12,10 @@ enum Theme {
     static let accent = Color(hex: 0x38C2A8)
     /// Orange: a hand is holding something.
     static let hot = Color(hex: 0xF4B23A)
-    /// Red: interest and money lost.
+    /// Red: interest and money lost; the warm cup.
     static let warn = Color(hex: 0xF27A5E)
+    /// Blue: the cold cup.
+    static let cool = Color(hex: 0x5AA9F0)
 }
 
 extension Color {

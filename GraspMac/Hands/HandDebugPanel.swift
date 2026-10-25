@@ -32,11 +32,18 @@ struct HandDebugPanel: View {
                     .foregroundStyle(hand.isPinching ? Theme.hot : Theme.muted)
             }
 
-            slider("Pinch in", value: $pipeline.config.pinchEnter, in: 0.1...0.6)
-            slider("Pinch out", value: $pipeline.config.pinchExit, in: 0.2...0.8)
+            slider("Pinch in", value: pinchEnter, in: 0.1...0.6)
+            // Out must stay above in, or a pinch flickers on and off at the threshold.
+            slider("Pinch out", value: $pipeline.config.pinchExit, in: (pipeline.config.pinchEnter + 0.05)...0.9)
 
-            Text("⌘D hide · ⌘R reset · ⌘[ ⌘] term")
-                .foregroundStyle(Theme.muted)
+            HStack {
+                Text("⌘D hide · ⌘[ ⌘] term")
+                    .foregroundStyle(Theme.muted)
+                Spacer()
+                Button("Reset tuning") { pipeline.config = GestureConfig() }
+                    .controlSize(.small)
+                    .disabled(pipeline.config == GestureConfig())
+            }
         }
         .font(.system(size: 12, design: .monospaced))
         .foregroundStyle(Theme.ink)
@@ -44,6 +51,18 @@ struct HandDebugPanel: View {
         .frame(width: 344)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.surface.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+    }
+
+    /// Raising "in" past "out" drags "out" up with it.
+    private var pinchEnter: Binding<Double> {
+        Binding {
+            pipeline.config.pinchEnter
+        } set: { value in
+            var config = pipeline.config
+            config.pinchEnter = value
+            config.pinchExit = max(config.pinchExit, value + 0.05)
+            pipeline.config = config
+        }
     }
 
     private func describe(_ hand: TrackedHand) -> String {
@@ -56,6 +75,8 @@ struct HandDebugPanel: View {
         if hand.pinch == .twist {
             text += String(format: " %+.0f°", hand.twist * 180 / .pi)
         }
+        if hand.isFist { text += "  FIST (talking)" }
+        if hand.isOpenPalm { text += "  palm" }
         return text
     }
 

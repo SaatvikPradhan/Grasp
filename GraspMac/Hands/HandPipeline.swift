@@ -20,6 +20,8 @@ final class HandPipeline {
     var config = GestureConfig() {
         didSet { worker.setConfig(config) }
     }
+    /// Called on the main actor with every frame's hands, after the canvas has them.
+    @ObservationIgnored var onHands: (([TrackedHand]) -> Void)?
 
     @ObservationIgnored let capture = WebcamCapture()
     @ObservationIgnored private let worker = HandWorker()
@@ -36,6 +38,7 @@ final class HandPipeline {
                 MainActor.assumeIsolated {
                     canvas.apply(output.hands)
                     guard let self else { return }
+                    self.onHands?(output.hands)
                     if self.aspect != output.aspect { self.aspect = output.aspect }
                     if let fps = output.fps { self.fps = fps }
                 }

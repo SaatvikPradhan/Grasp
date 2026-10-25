@@ -11,6 +11,8 @@ struct HandCursor: View {
         case pinch
         /// Orange arc filled to the dialed value.
         case twist(fraction: Double, label: String)
+        /// A fist: Grasp is listening.
+        case talking
     }
 
     let mode: Mode
@@ -35,6 +37,15 @@ struct HandCursor: View {
                     Circle().fill(Theme.hot).frame(width: 8, height: 8)
                     Circle().fill(Theme.hot).frame(width: 8, height: 8)
                 }
+            case .talking:
+                Circle()
+                    .fill(Theme.warn.opacity(0.2))
+                    .overlay(Circle().stroke(Theme.warn, lineWidth: 4))
+                    .frame(width: 58, height: 58)
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.warn)
+                    .symbolEffect(.pulse, options: .repeating)
             case .twist(let fraction, let label):
                 Circle()
                     .stroke(Theme.hot.opacity(0.25), lineWidth: 7)
@@ -60,6 +71,7 @@ struct HandCursor: View {
         HandCursor(mode: .overCard)
         HandCursor(mode: .pinch)
         HandCursor(mode: .twist(fraction: 0.4, label: "48 mo"))
+        HandCursor(mode: .talking)
     }
     .padding(40)
     .background(Theme.paper)

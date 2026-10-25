@@ -13,5 +13,9 @@
 		<string>_grasp-link._tcp</string>
 		<string>_grasp-link._udp</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hold Space and talk to Grasp: "make it 48 months", "compare them".</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Grasp turns what you say into chart commands.</string>
 </dict>
 </plist>

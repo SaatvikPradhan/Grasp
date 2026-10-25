@@ -27,12 +27,32 @@ public struct LinkFrame: Codable, Sendable, Equatable {
     }
 }
 
+/// A box to draw on a captured photo: a loan term in green or an add-on in red.
+public struct LinkHighlight: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable {
+        case term, addon
+    }
+
+    public var text: String
+    /// Normalized 0...1, origin at the top left of the captured image.
+    public var rect: CGRect
+    public var kind: Kind
+
+    public init(text: String, rect: CGRect, kind: Kind) {
+        self.text = text
+        self.rect = rect
+        self.kind = kind
+    }
+}
+
 /// Everything the phone and the Mac say to each other over `MultipeerLink`.
 public enum LinkMessage: Codable, Sendable, Equatable {
     /// Phone → Mac.
     case frame(LinkFrame)
     /// Mac → phone, as soon as a frame arrives.
     case received(frameID: UUID, sentAt: Double)
+    /// Mac → phone, once a capture has been read: where its terms and add-ons are.
+    case highlights(captureID: UUID, boxes: [LinkHighlight])
 
     /// Binary property lists carry the JPEG bytes as they are, where JSON would base64 them.
     public func encoded() throws -> Data {
