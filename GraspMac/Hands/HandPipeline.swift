@@ -42,13 +42,17 @@ final class HandPipeline {
         started = true
 
         let worker = self.worker
+        // Snapshot runs ignore whoever is sitting at the Mac, so a stray fist can't change the picture.
+        let environment = ProcessInfo.processInfo.environment
+        let ignoresHands = environment["GRASP_SNAPSHOT"] != nil && environment["GRASP_SNAPSHOT_HANDS"] == nil
         capture.onFrame = { [weak self] buffer in
             guard let output = worker.process(buffer) else { return }
+            let hands = ignoresHands ? [] : output.hands
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    canvas.apply(output.hands)
+                    canvas.apply(hands)
                     guard let self else { return }
-                    self.onHands?(output.hands)
+                    self.onHands?(hands)
                     if self.aspect != output.aspect { self.aspect = output.aspect }
                     if let fps = output.fps { self.fps = fps }
                 }
