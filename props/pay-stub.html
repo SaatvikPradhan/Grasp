@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample pay stub</title>
+<!-- Test document for "hand Grasp anything". Mistakes on purpose: see props/TEST-DOCUMENTS.md. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px; background: #fff; color: #1b1b1b; font: 12px/1.4 "Courier New", Courier, monospace; width: 8.5in; }
+  .head { display: flex; justify-content: space-between; border-bottom: 2px solid #1b1b1b; padding-bottom: 8px; margin-bottom: 12px; }
+  .head b { font-size: 16px; font-family: "Helvetica Neue", Arial, sans-serif; }
+  .head div { font-size: 11.5px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border: 1px solid #1b1b1b; padding: 8px 10px; margin-bottom: 12px; font-size: 11.5px; }
+  .meta b { display: block; font-size: 10px; letter-spacing: .06em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  th { text-align: left; border-bottom: 1.5px solid #1b1b1b; font-size: 10.5px; padding: 4px 3px; }
+  th.n, td.n { text-align: right; }
+  td { padding: 4px 3px; border-bottom: 1px dotted #999; }
+  tr.total td { font-weight: 700; border-top: 1.5px solid #1b1b1b; border-bottom: 0; }
+  h2 { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11px; letter-spacing: .08em; margin: 0 0 4px; }
+  .net { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; border: 2px solid #1b1b1b; padding: 10px 14px; }
+  .net b { font-size: 22px; font-family: "Helvetica Neue", Arial, sans-serif; }
+  .note { margin-top: 12px; font-size: 10px; font-family: "Helvetica Neue", Arial, sans-serif; color: #333; }
+  .demo { margin-top: 10px; text-align: center; font-size: 9.5px; color: #999; letter-spacing: .08em; font-family: "Helvetica Neue", Arial, sans-serif; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div><b>Valley State University</b><br>Student Employment · Earnings Statement</div>
+    <div>Pay date: 10/24/2026<br>Check no. 0091274 · Direct deposit</div>
+  </div>
+
+  <div class="meta">
+    <div><b>EMPLOYEE</b>Jordan Lee<br>ID 900-41-2276</div>
+    <div><b>DEPARTMENT</b>Dining Services, West Hall<br>Position: Student Cook</div>
+    <div><b>PAY PERIOD</b>10/05/2026 – 10/18/2026<br>Student, enrolled full time</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <h2>EARNINGS</h2>
+      <table>
+        <tr><th>Type</th><th class="n">Hours</th><th class="n">Rate</th><th class="n">Current</th><th class="n">YTD</th></tr>
+        <tr><td>Regular</td><td class="n">32.50</td><td class="n">13.50</td><td class="n">425.25</td><td class="n">2,104.75</td></tr>
+        <tr><td>Overtime</td><td class="n">0.00</td><td class="n">20.25</td><td class="n">0.00</td><td class="n">0.00</td></tr>
+        <tr class="total"><td>Gross pay</td><td class="n">32.50</td><td></td><td class="n">425.25</td><td class="n">2,104.75</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2>DEDUCTIONS</h2>
+      <table>
+        <tr><th>Item</th><th class="n">Current</th><th class="n">YTD</th></tr>
+        <tr><td>Federal income tax</td><td class="n">18.40</td><td class="n">92.10</td></tr>
+        <tr><td>Social Security (6.2%)</td><td class="n">28.37</td><td class="n">130.49</td></tr>
+        <tr><td>Medicare (1.45%)</td><td class="n">6.17</td><td class="n">30.52</td></tr>
+        <tr><td>PA income tax (3.07%)</td><td class="n">13.06</td><td class="n">64.62</td></tr>
+        <tr><td>Local earned income tax (1%)</td><td class="n">4.25</td><td class="n">21.05</td></tr>
+        <tr><td>Uniform charge</td><td class="n">15.00</td><td class="n">45.00</td></tr>
+        <tr class="total"><td>Total deductions</td><td class="n">85.25</td><td class="n">383.78</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="net"><span>NET PAY · deposited to checking ••••6610</span><b>$340.00</b></div>
+
+  <p class="note">Hours are recorded from the timekeeping system at the end of the pay period. Report any error in hours or pay to your supervisor within 30 days. Uniform charges are deducted each pay period until the uniform cost of $90.00 is repaid. Students enrolled at least half time and working for the university at which they are enrolled may be exempt from Social Security and Medicare (FICA) withholding.</p>
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL PAY STATEMENT</div>
+</body>
+</html>

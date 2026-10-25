@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demo phone plan agreement</title>
+<!-- Demo prop: a non-car document for "hand Grasp anything". Catches: the promo price ends
+     after 12 months ($60 → $85), the device balance is due if you leave, the autopay discount
+     needs paperless billing too, and the plan renews month to month at a price that can rise. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #fff; color: #111; font: 13px/1.45 "Helvetica Neue", Arial, sans-serif; width: 8.5in; }
+  .brand { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 3px solid #5b2a86; padding-bottom: 8px; margin-bottom: 14px; }
+  .brand b { font-size: 22px; color: #5b2a86; letter-spacing: .02em; }
+  .brand span { font-size: 12px; color: #444; }
+  h1 { font-size: 17px; margin: 0 0 10px; }
+  .box { border: 1.5px solid #111; padding: 10px 12px; margin-bottom: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 4px 4px; border-bottom: 1px solid #ccc; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 700; border-top: 1.5px solid #111; border-bottom: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 6px; }
+  .fine { font-size: 9.5px; color: #333; text-align: justify; columns: 2; column-gap: 18px; }
+  .fine p { margin: 0 0 6px; }
+  .demo { margin-top: 14px; text-align: center; font-size: 10px; color: #888; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="brand"><b>Valley Wireless</b><span>Customer Service Agreement · Account 5531-0087</span></div>
+  <h1>Unlimited Plus plan with iPhone 17 (128 GB)</h1>
+
+  <div class="grid">
+    <div class="box">
+      <h2>Your monthly price</h2>
+      <table>
+        <tr><td>Unlimited Plus plan (months 1 to 12, promotional)</td><td class="n">$60.00</td></tr>
+        <tr><td>Unlimited Plus plan (from month 13)</td><td class="n">$85.00</td></tr>
+        <tr><td>Device payment, 36 months at 0% APR</td><td class="n">$25.00</td></tr>
+        <tr><td>AutoPay discount (requires AutoPay and paperless billing)</td><td class="n">−$10.00</td></tr>
+        <tr class="total"><td>First 12 months, with AutoPay</td><td class="n">$75.00</td></tr>
+      </table>
+    </div>
+    <div class="box">
+      <h2>Due today and one-time charges</h2>
+      <table>
+        <tr><td>Activation fee</td><td class="n">$35.00</td></tr>
+        <tr><td>iPhone 17 retail price</td><td class="n">$899.99</td></tr>
+        <tr><td>Down payment on device</td><td class="n">$0.00</td></tr>
+        <tr><td>Amount financed for device</td><td class="n">$899.99</td></tr>
+        <tr><td>Late payment fee</td><td class="n">$7.00</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Agreement term</h2>
+    Service term: 24 months. Device installment plan: 36 monthly payments of $25.00. Total device payments: $899.99.
+  </div>
+
+  <div class="fine">
+    <p><b>Promotional pricing.</b> The promotional plan price of $60.00 per month applies to the first 12 bill cycles only. Beginning with bill cycle 13, the plan is billed at the then-current price, currently $85.00 per month.</p>
+    <p><b>Early termination.</b> If you cancel service or port your number before the device installment plan is paid off, the remaining device balance becomes due immediately on your next bill.</p>
+    <p><b>AutoPay discount.</b> The $10.00 monthly discount requires both AutoPay from a bank account and paperless billing. If either is turned off, the discount is removed without notice.</p>
+    <p><b>Renewal.</b> At the end of the service term, service continues month to month at the then-current price unless you cancel. Valley Wireless may change monthly prices with 30 days' notice.</p>
+    <p><b>Disputes.</b> Disputes are resolved by binding individual arbitration; you waive the right to a jury trial or class action.</p>
+    <p><b>Late payments.</b> A $7.00 late fee applies to payments received after the due date.</p>
+  </div>
+
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL SERVICE AGREEMENT</div>
+</body>
+</html>

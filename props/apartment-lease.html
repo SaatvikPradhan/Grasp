@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample apartment lease</title>
+<!-- Test document for "hand Grasp anything". Mistakes on purpose: see props/TEST-DOCUMENTS.md. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 26px 32px; background: #fff; color: #1b1b1b; font: 12px/1.4 Georgia, "Times New Roman", serif; width: 8.5in; }
+  .head { text-align: center; border-bottom: 2px solid #2f4b2f; padding-bottom: 8px; margin-bottom: 12px; }
+  .head b { display: block; font-size: 20px; letter-spacing: .04em; color: #2f4b2f; }
+  .head span { font-size: 11.5px; color: #444; font-family: "Helvetica Neue", Arial, sans-serif; }
+  .parties { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11.5px; margin-bottom: 12px; }
+  .parties b { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #555; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 10px; }
+  .box { border: 1.5px solid #2f4b2f; padding: 9px 12px; }
+  h2 { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; margin: 0 0 6px; color: #2f4b2f; }
+  table { width: 100%; border-collapse: collapse; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 12px; }
+  td { padding: 4px 3px; border-bottom: 1px solid #ddd; }
+  td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 700; border-top: 1.5px solid #1b1b1b; border-bottom: 0; }
+  .terms { font-size: 10.5px; text-align: justify; columns: 2; column-gap: 20px; }
+  .terms p { margin: 0 0 6px; }
+  .terms b { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; }
+  .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 14px; font-size: 10.5px; font-family: "Helvetica Neue", Arial, sans-serif; }
+  .sign div { border-top: 1px solid #1b1b1b; padding-top: 3px; }
+  .demo { margin-top: 10px; text-align: center; font-size: 9.5px; color: #999; letter-spacing: .08em; font-family: "Helvetica Neue", Arial, sans-serif; }
+</style>
+</head>
+<body>
+  <div class="head"><b>MAPLE COURT APARTMENTS</b><span>Residential Lease Agreement · Summary of Key Terms · Lease No. MC-26-0418</span></div>
+
+  <div class="parties">
+    <div><b>Tenants</b>Jordan Lee and Sam Patel</div>
+    <div><b>Premises</b>412 Maple Court, Unit 4B, State College, PA</div>
+    <div><b>Lease term</b>12 months: Aug 15, 2026 to Aug 14, 2027</div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h2>Monthly charges</h2>
+      <table>
+        <tr><td>Monthly rent</td><td class="n">$1,150.00</td></tr>
+        <tr><td>Amenity fee (required)</td><td class="n">$35.00</td></tr>
+        <tr><td>Trash and pest service (required)</td><td class="n">$18.00</td></tr>
+        <tr class="total"><td>Total due each month</td><td class="n">$1,203.00</td></tr>
+        <tr><td>Total rent for the lease term</td><td class="n">$14,400.00</td></tr>
+      </table>
+    </div>
+    <div class="box">
+      <h2>Due at move-in</h2>
+      <table>
+        <tr><td>Security deposit (refundable)</td><td class="n">$1,500.00</td></tr>
+        <tr><td>Administrative fee (non-refundable)</td><td class="n">$250.00</td></tr>
+        <tr><td>Application fee (non-refundable)</td><td class="n">$60.00</td></tr>
+        <tr><td>First month's rent</td><td class="n">$1,150.00</td></tr>
+        <tr class="total"><td>Total due at move-in</td><td class="n">$2,960.00</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="terms">
+    <p><b>1. Payment.</b> Rent is due on the 1st of each month. Rent received after the 3rd is late and incurs a late charge of 10% of the monthly rent plus $25.00 for each additional day until paid.</p>
+    <p><b>2. Automatic renewal.</b> This lease renews automatically for an additional twelve (12) month term unless either party gives written notice at least sixty (60) days before the end of the term. Rent for any renewal term may increase by up to 8%.</p>
+    <p><b>3. Early termination.</b> Tenants may end this lease early by paying an early termination fee equal to two (2) months' rent and forfeiting the security deposit.</p>
+    <p><b>4. Move-out cleaning.</b> A cleaning charge of $300.00 will be deducted from the security deposit at move-out regardless of the condition of the premises.</p>
+    <p><b>5. Repairs.</b> Tenants are responsible for the cost of any single repair under $250.00, including appliances provided by Landlord.</p>
+    <p><b>6. Joint liability.</b> Each tenant is responsible for the full rent and all charges, not only a share.</p>
+    <p><b>7. Utilities.</b> Electricity, internet and cable are not included and are the tenants' responsibility.</p>
+    <p><b>8. Guests.</b> Guests may not stay more than 7 nights in any 30-day period without written approval.</p>
+  </div>
+
+  <div class="sign"><div>Tenant</div><div>Tenant</div><div>Landlord or agent</div></div>
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL LEASE</div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample phone bill</title>
+<!-- Test document for "hand Grasp anything". Mistakes on purpose: see props/TEST-DOCUMENTS.md. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px; background: #fff; color: #1a1a1a; font: 12.5px/1.4 "Helvetica Neue", Arial, sans-serif; width: 8.5in; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0a6cbd; padding-bottom: 10px; margin-bottom: 14px; }
+  .logo { font-size: 24px; font-weight: 800; color: #0a6cbd; letter-spacing: -.01em; }
+  .logo small { display: block; font-size: 11px; font-weight: 400; color: #555; letter-spacing: 0; }
+  .acct { text-align: right; font-size: 11.5px; color: #333; }
+  .acct b { font-size: 13px; color: #111; }
+  .summary { display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; margin-bottom: 14px; }
+  .due { background: #eef5fc; border: 1.5px solid #0a6cbd; border-radius: 8px; padding: 12px 14px; }
+  .due .amt { font-size: 30px; font-weight: 800; color: #0a6cbd; }
+  .due .when { font-size: 13px; font-weight: 600; }
+  .box { border: 1px solid #c9d3dc; border-radius: 8px; padding: 10px 14px; }
+  h2 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: #0a6cbd; margin: 0 0 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 5px 4px; border-bottom: 1px solid #e3e8ed; vertical-align: top; }
+  td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td small { display: block; color: #666; font-size: 10.5px; }
+  tr.total td { font-weight: 800; font-size: 14px; border-top: 2px solid #1a1a1a; border-bottom: 0; }
+  .fine { margin-top: 12px; font-size: 9.5px; color: #444; columns: 2; column-gap: 20px; text-align: justify; }
+  .fine p { margin: 0 0 5px; }
+  .demo { margin-top: 10px; text-align: center; font-size: 9.5px; color: #999; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="logo">Northway Mobile<small>Monthly statement</small></div>
+    <div class="acct">Account holder <b>Jordan Lee</b><br>Account 7702-4415-09 · Line (814) 555-0142<br>Billing period Oct 3 – Nov 2, 2026 · Bill date Nov 3, 2026</div>
+  </div>
+
+  <div class="summary">
+    <div class="due">
+      <div>Total amount due</div>
+      <div class="amt">$145.32</div>
+      <div class="when">Due Nov 24, 2026 · AutoPay on</div>
+    </div>
+    <div class="box">
+      <h2>Account summary</h2>
+      <table>
+        <tr><td>Previous balance</td><td class="n">$110.30</td></tr>
+        <tr><td>Payment received Oct 1, 2026 · thank you</td><td class="n">−$110.30</td></tr>
+        <tr><td>Previous bill was due</td><td class="n">Oct 3, 2026</td></tr>
+        <tr><td>New charges this period</td><td class="n">$145.32</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>New charges · Oct 3 – Nov 2</h2>
+    <table>
+      <tr><td>Northway Unlimited plan<small>Promotional rate $60.00/mo applies through Jun 2027</small></td><td class="n">$85.00</td></tr>
+      <tr><td>Phone installment, payment 4 of 36<small>Remaining device balance $800.00</small></td><td class="n">$25.00</td></tr>
+      <tr><td>Device Protection Plus<small>Added Sep 28, 2026</small></td><td class="n">$15.00</td></tr>
+      <tr><td>AutoPay and paperless discount</td><td class="n">−$10.00</td></tr>
+      <tr><td>Administrative and telco recovery fee</td><td class="n">$3.49</td></tr>
+      <tr><td>Regulatory cost recovery charge</td><td class="n">$2.99</td></tr>
+      <tr><td>Late payment fee</td><td class="n">$7.00</td></tr>
+      <tr><td>Taxes, surcharges and government fees</td><td class="n">$6.84</td></tr>
+      <tr class="total"><td>Total new charges</td><td class="n">$145.32</td></tr>
+    </table>
+  </div>
+
+  <div class="fine">
+    <p><b>Your plan.</b> Northway Unlimited is $85.00 per month. Your promotional rate of $60.00 per month applies for 12 bill cycles from activation (Jun 2026) when you keep AutoPay and paperless billing.</p>
+    <p><b>Device Protection Plus.</b> $15.00 per month, charged until you cancel. Claims carry a deductible of up to $249.</p>
+    <p><b>Fees.</b> The Administrative and telco recovery fee and the Regulatory cost recovery charge are Northway charges, not taxes or government-required fees, and may change.</p>
+    <p><b>Late fees.</b> A $7.00 late fee applies when payment is not received by the due date.</p>
+    <p><b>Leaving early.</b> If you cancel or transfer your number, any remaining device balance is due on your final bill.</p>
+    <p><b>Questions about this bill?</b> Dispute any charge within 60 days of the bill date.</p>
+  </div>
+
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL BILL</div>
+</body>
+</html>

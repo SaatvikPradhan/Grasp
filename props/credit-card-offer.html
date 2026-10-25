@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample credit card offer</title>
+<!-- Test document for "hand Grasp anything". Mistakes on purpose: see props/TEST-DOCUMENTS.md. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 26px 32px; background: #fff; color: #1c1c1c; font: 12px/1.38 "Helvetica Neue", Arial, sans-serif; width: 8.5in; }
+  .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; align-items: center; background: #1d2440; color: #fff; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+  .hero .bank { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
+  .hero h1 { font-size: 23px; margin: 4px 0 8px; }
+  .hero ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .hero ul b { color: #f2c14e; }
+  .card { aspect-ratio: 1.586; border-radius: 12px; background: linear-gradient(135deg, #c9ced8, #8d95a6); padding: 14px; color: #1d2440; font-weight: 700; display: flex; flex-direction: column; justify-content: space-between; max-width: 100%; }
+  .card span { font-size: 11px; letter-spacing: .2em; }
+  .preapproved { font-size: 12.5px; margin-bottom: 10px; }
+  .preapproved b { font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; border: 1.5px solid #111; font-size: 11.5px; }
+  th { background: #111; color: #fff; text-align: left; font-size: 11px; letter-spacing: .05em; padding: 5px 8px; }
+  td { border: 1px solid #111; padding: 6px 8px; vertical-align: top; }
+  td:first-child { width: 36%; font-weight: 700; }
+  td .big { font-size: 15px; font-weight: 800; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+  .fine { font-size: 9.5px; color: #333; text-align: justify; margin-top: 8px; }
+  .demo { margin-top: 8px; text-align: center; font-size: 9.5px; color: #999; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <div>
+      <div class="bank">Ridgeline Bank</div>
+      <h1>Platinum Rewards Card</h1>
+      <ul>
+        <li><b>0% intro APR</b> on purchases for 12 months</li>
+        <li><b>$0 annual fee</b></li>
+        <li><b>3% cash back</b> on dining, 1% on everything else</li>
+      </ul>
+    </div>
+    <div class="card"><span>RIDGELINE</span><span>•••• •••• •••• 2048</span><span>JORDAN LEE</span></div>
+  </div>
+
+  <p class="preapproved"><b>Jordan, you're pre-approved.</b> Respond by Nov 30, 2026 with offer code RB-8841-JL. Credit limit up to $3,000.</p>
+
+  <table>
+    <tr><th colspan="2">Interest rates and interest charges</th></tr>
+    <tr><td>Annual Percentage Rate (APR) for Purchases</td><td><span class="big">0%</span> introductory APR for 12 months from account opening.<br>After that, <span class="big">24.99% to 29.99%</span>, based on your creditworthiness. This APR will vary with the market based on the Prime Rate.</td></tr>
+    <tr><td>APR for Balance Transfers</td><td>0% introductory APR for 12 months, then 24.99% to 29.99%.</td></tr>
+    <tr><td>APR for Cash Advances</td><td><span class="big">29.99%</span></td></tr>
+    <tr><td>Penalty APR and When It Applies</td><td><span class="big">29.99%</span>. This APR may be applied if you make a late payment. How long will the Penalty APR apply? If your APRs are increased for this reason, the Penalty APR may apply indefinitely.</td></tr>
+    <tr><td>Promotional purchases</td><td>If the promotional purchase balance is not paid in full within 12 months, interest will be charged from the purchase date at the standard purchase APR.</td></tr>
+    <tr><td>Minimum interest charge</td><td>If you are charged interest, the charge will be no less than $1.00.</td></tr>
+  </table>
+
+  <div class="two">
+    <table>
+      <tr><th colspan="2">Fees</th></tr>
+      <tr><td>Annual fee</td><td>$0 for the first year, then $95</td></tr>
+      <tr><td>Balance transfer</td><td>5% of each transfer ($5 minimum)</td></tr>
+      <tr><td>Cash advance</td><td>5% of each advance ($10 minimum)</td></tr>
+      <tr><td>Foreign transaction</td><td>3% of each transaction in U.S. dollars</td></tr>
+    </table>
+    <table>
+      <tr><th colspan="2">Penalty fees and payments</th></tr>
+      <tr><td>Late payment</td><td>Up to $41</td></tr>
+      <tr><td>Returned payment</td><td>Up to $41</td></tr>
+      <tr><td>Minimum payment</td><td>The greater of $25 or 1% of the balance, plus interest and fees</td></tr>
+      <tr><td>Grace period</td><td>At least 25 days after each billing cycle closes</td></tr>
+    </table>
+  </div>
+
+  <p class="fine">Cash back is earned as points and redeemable in $25 increments; points expire after 24 months. We may change APRs, fees and other terms at any time in accordance with the Cardholder Agreement. Pre-approval is based on information in your credit report; final approval requires a hard credit inquiry. Payments are applied to balances with the lowest APR first.</p>
+  <div class="demo">SAMPLE DOCUMENT FOR A HACKATHON DEMO · NOT A REAL CREDIT OFFER</div>
+</body>
+</html>
