@@ -20,6 +20,7 @@ struct GraspMacApp: App {
     @State private var tiger: TigerStore
     @State private var videos: VideoStudy
     @State private var planner: PagePlanner
+    @State private var paste = CanvasPaste()
 
     init() {
         let canvas = CanvasModel()
@@ -78,6 +79,8 @@ struct GraspMacApp: App {
                     phone.start()
                     probes.start()
                     Task { await voice.start() }
+                    // ⌘V on the canvas reads a YouTube link, a copied photo or a copied file.
+                    paste.install(paper: paper, videos: videos)
                     // Answers, checked notes, deep dives and notebooks go to Tiger Data as they appear.
                     canvas.onResult = { [tiger] kind, pageID in tiger.save(kind, pageID: pageID) }
                     Task { await tiger.start() }
@@ -234,6 +237,13 @@ struct GraspMacApp: App {
                 case "dispute": await disputer.write()
                 case "dive": await diver.dive()
                 case "plan": await planner.planFocusedPage()
+                case let step where step.hasPrefix("paste:"):
+                    // paste:text pastes from a private pasteboard, leaving yours alone.
+                    let board = NSPasteboard(name: NSPasteboard.Name("grasp-snapshot"))
+                    board.clearContents()
+                    board.setString(String(step.dropFirst(6)), forType: .string)
+                    CanvasPaste.paste(from: board, paper: paper, videos: videos)
+                    try? await Task.sleep(for: .seconds(8))
                 case let step where step.hasPrefix("hoverplan"):
                     // hoverplan2: the second step of the newest "what to do" card.
                     let index = (Int(step.dropFirst(9)) ?? 1) - 1
