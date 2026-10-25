@@ -4,7 +4,9 @@ You're building the live-data half of Grasp: three temperature probes on a board
 
 ## Why it matters
 
-The Research demo times an **iodine clock reaction** in three cups at three temperatures: A warm (~40 °C), B room, C cold. One probe sits in each cup. The judges watch the three temperatures live on the laptop while the cups turn dark blue one after another. Grasp then fits the activation energy from those temperatures and times. If the probes don't reach the Mac, there's no research demo, so this is on the "never cut" list.
+**Update Oct 25:** the Research demo is now **cooling cups** (hot water, a lid, ice), and the bench runs on the Kepler kit's **Raspberry Pi Pico W**. The full build, with wiring diagrams, the Pico firmware, the Mac serial reader and a test checklist, is in the bench hardware guide: https://claude.ai/artifact/HmbjbSeNhPi5QqThP99vkF. The protocol below still holds; the guide adds `ROOM`, `BTN`, `BEEP` and `SHOW`.
+
+The Research demo pours hot water into three cups, one probe each: A open, B with a lid, C with ice dropped in later. The judges watch the three temperatures live, Grasp confirms each step of the protocol from the probes, and it fits each cup's cooling rate against the paper's. If the probes don't reach the Mac, there's no live research demo, so this is on the "never cut" list.
 
 ## What to build
 

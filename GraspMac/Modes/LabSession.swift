@@ -60,12 +60,14 @@ final class LabSession {
         return micProblem.map { "Taking lab notes without sound: \($0)" } ?? "Taking lab notes: camera, speech and probes"
     }
 
-    func stop() async -> String {
+    /// Stops and writes the notebook, with the protocol as it was followed when the run was guided.
+    func stop(protocol record: ProtocolRecord? = nil) async -> String {
         guard isRecording else { return "Not taking lab notes" }
         ticker?.cancel()
         listener.stop()
         isRecording = false
-        let recording = LabRecording(frames: frames, speech: transcript.lines(), readings: readings, duration: elapsed)
+        let recording = LabRecording(frames: frames, speech: transcript.lines(), readings: readings, duration: elapsed,
+                                     protocolRecord: record)
         return await write(recording, rehearsal: false)
     }
 

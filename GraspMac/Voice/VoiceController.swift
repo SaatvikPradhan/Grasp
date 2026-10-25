@@ -22,17 +22,22 @@ final class VoiceController {
     @ObservationIgnored private let asker: Asker
     @ObservationIgnored private let researcher: Researcher
     @ObservationIgnored private let lab: LabSession
+    @ObservationIgnored private let guide: ProtocolGuide
+    @ObservationIgnored private let disputer: Disputer
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
 
-    init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession) {
+    init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession, guide: ProtocolGuide,
+         disputer: Disputer) {
         self.canvas = canvas
         self.money = money
         self.asker = asker
         self.researcher = researcher
         self.lab = lab
+        self.guide = guide
+        self.disputer = disputer
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -155,7 +160,25 @@ final class VoiceController {
         case .checkNotes:
             return await researcher.linkLatestNotes()
         case .labNotes(let on):
+            if !on, guide.isRunning { return await guide.finish() }
             return on ? lab.start() : await lab.stop()
+        case .startExperiment:
+            // With a protocol on the canvas, guide it; otherwise just take notes.
+            return guide.ready == nil ? lab.start() : guide.start()
+        case .protocolStep(let move):
+            switch move {
+            case .next: return guide.next()
+            case .back: return guide.back()
+            case .again: return guide.again()
+            }
+        case .mapMethod:
+            return await researcher.mapMethod()
+        case .findRelatedWork:
+            return await researcher.findRelatedWork()
+        case .writeDispute:
+            return await disputer.write()
+        case .finishExperiment:
+            return guide.isRunning ? await guide.finish() : await lab.stop()
         case .saveNotebook:
             return lab.save()
         case .comingSoon(let request):

@@ -134,6 +134,25 @@ struct AddsUpTests {
         #expect(reading.resolvedModel == .none)
     }
 
+    @Test func aProductWithARateInItIsntChecked() {
+        let reading = page([fact("payment", 25), fact("months", 36)], [
+            .init(label: "Device payment", kind: .product, stated: 25,
+                  inputs: [.init(label: "36 months", value: 36), .init(label: "0%", value: 0)]),
+        ])
+        #expect(reading.mismatches.isEmpty)
+    }
+
+    @Test func anotherTotalOfTheSameAmountDoesntHideAMistake() {
+        // The phone bill: "Total amount due" adds up, "Total new charges" doesn't; both say $145.32.
+        let lines: [Double] = [85, 25, 15, -10, 3.49, 2.99, 7, 6.84]
+        let facts = (lines + [110.30, 145.32]).enumerated().map { fact("f\($0.offset)", $0.element) }
+        let reading = page(facts, [
+            .init(label: "Total amount due", kind: .sum, stated: 145.32, inputs: inputs([110.30, -110.30, 145.32])),
+            .init(label: "Total new charges", kind: .sum, stated: 145.32, inputs: inputs(lines)),
+        ])
+        #expect(reading.mismatches.map(\.expected) == [135.32])
+    }
+
     @Test func aPercentPrintedWithOneDecimalCounts() {
         var reading = page([fact("gross", 425.25)], [
             .init(label: "Social Security", kind: .percentOf, stated: 28.37, inputs: inputs([6.2, 425.25])),

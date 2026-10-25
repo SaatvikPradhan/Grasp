@@ -23,8 +23,16 @@ struct NotebookCardView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(2)
+                if let record = notebook.protocolRecord {
+                    let done = record.steps.filter { $0.finished != nil }.count
+                    Text("Followed \u{201C}\(record.title)\u{201D}: \(done) of \(record.steps.count) steps"
+                         + (record.deviations.isEmpty ? ", as written" : " · \(record.deviations.count) different from the page"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(record.deviations.isEmpty ? Theme.accent : Theme.hot)
+                        .lineLimit(1)
+                }
             }
-            .frame(height: 66, alignment: .topLeading)
+            .frame(height: notebook.protocolRecord == nil ? 66 : 84, alignment: .topLeading)
 
             HStack(alignment: .top, spacing: 20) {
                 steps

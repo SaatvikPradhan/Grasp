@@ -32,6 +32,10 @@ final class CanvasModel {
     @ObservationIgnored private var pageInFocus: UUID?
     /// Folded cards, in the order they were folded.
     @ObservationIgnored private var chipOrder: [UUID] = []
+    /// The group of the card in focus; every other group is folded.
+    @ObservationIgnored private var groupInFocus: UUID?
+    /// The groups of chips down the left edge, for drawing a tray behind each.
+    private(set) var chipTrays: [ChipTray] = []
     /// What's being hovered, by mouse or by a hand held still over it.
     private(set) var hovered: HoverTarget?
     /// Called when the hovered item changes, for lighting the same spot on the phone.
@@ -59,6 +63,11 @@ final class CanvasModel {
     func resetLayout() {
         grips = [:]
         mergeCandidates = []
+        focusedID = nil
+        pageInFocus = nil
+        groupInFocus = Self.carDeal
+        chipOrder = []
+        chipTrays = []
         cards = [
             Card(center: CGPoint(x: canvasSize.width * 0.40, y: canvasSize.height * 0.34), kind: .loan(.demo)),
             Card(center: CGPoint(x: canvasSize.width * 0.58, y: canvasSize.height - 215), kind: .temperatures),
@@ -295,36 +304,58 @@ final class CanvasModel {
         trashTarget = nil
         focusedID = nil
         pageInFocus = nil
+        groupInFocus = nil
         chipOrder = []
         withAnimation(.spring(duration: 0.35)) {
             cards.removeAll()
+            chipTrays = []
         }
     }
 
     // MARK: Focus
 
-    /// Moves focus to a card and brings it to the front. Focusing a different page folds every
-    /// other page, and whatever sat beside it, into chips down the left edge. A chip that gets
-    /// focus opens again: a page at `point` (under a hand that grabbed it) or in open space, and
-    /// anything else beside the page in focus.
+    /// The group the car deal's cards share: the loans, the stickers, what to say.
+    static let carDeal = UUID()
+
+    /// Moves focus to a card and brings it to the front. Focusing a card from another group
+    /// brings that group back (its pages where they were, and the last thing beside them) and
+    /// folds everything else into chips down the left edge, a group to each page. A chip that
+    /// gets focus opens again: at `point` (under a hand that grabbed it), beside its page, or
+    /// where it was before it folded.
     func focus(_ id: UUID, openingAt point: CGPoint? = nil) {
-        guard let index = index(of: id) else { return }
-        let moved = focusedID != id
+        guard let card = card(id) else { return }
+        let group = group(of: card)
+        let switching = folds(card) && group != groupInFocus
         focusedID = id
-        let card = cards.remove(at: index)
-        cards.append(card)
-        let isPage = if case .document = card.kind { true } else { false }
         withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
-            if isPage {
+            if switching {
+                groupInFocus = group
+                for other in cards where other.id != id && !other.isFolded && folds(other) && self.group(of: other) != group {
+                    fold(other.id)
+                }
+                // The group's pages come back together (the car deal's loans and stickers), and
+                // a chip from beside a page brings that page back with it.
+                pageInFocus = pageCard(of: group)
+                for other in cards where other.isFolded && other.kind.isPage && self.group(of: other) == group {
+                    open(other.id, at: nil)
+                }
+            }
+            let head = isHead(card)
+            if head {
                 pageInFocus = id
                 open(id, at: point)
-                guard moved else { return }
-                for other in cards where other.id != id && !other.isFolded {
-                    if case .document = other.kind { fold(other.id) } else if Self.sitsBeside(other.kind) { fold(other.id) }
-                }
             } else if card.isFolded {
-                if Self.sitsBeside(card.kind), pageInFocus != nil, point == nil { dock(id) } else { open(id, at: point) }
+                if card.kind.sitsBeside, point == nil { dock(id) } else { open(id, at: point) }
             }
+            if switching, head, let last = chipOrder.last(where: { chip in
+                self.card(chip).map { $0.kind.sitsBeside && self.group(of: $0) == group } ?? false
+            }) {
+                dock(last)
+            }
+        }
+        if let index = index(of: id) {
+            let card = cards.remove(at: index)
+            cards.append(card)
         }
     }
 
@@ -337,11 +368,55 @@ final class CanvasModel {
         return pages.sorted { $0.readAt < $1.readAt }.map(\.card)
     }
 
-    /// Cards that sit beside the page in focus: one at a time, the rest as chips.
-    static func sitsBeside(_ kind: Card.Kind) -> Bool {
-        switch kind {
-        case .answer, .notes, .model, .notebook: true
-        default: false
+    /// The group a card folds into: its own page's, the car deal's, or its own.
+    func group(of card: Card) -> UUID {
+        switch card.kind {
+        case .loan, .comparison, .advice, .pitch:
+            return Self.carDeal
+        case .scan(let scan):
+            if case .read(let reading) = scan.status, reading.documentType != .other { return Self.carDeal }
+            return card.id
+        default:
+            break
+        }
+        if card.kind.sitsBeside, let page = owner(of: card).flatMap(self.card), page.id != card.id {
+            return group(of: page)
+        }
+        return card.id
+    }
+
+    /// The page a card sits beside: the paper its notes, model or method are about, the bill a
+    /// letter disputes, or the card in focus when a question was asked.
+    private func owner(of card: Card) -> UUID? {
+        if case .answer(let answer) = card.kind { return answer.pageID.flatMap { self.card($0)?.id } }
+        let documentID: UUID? = switch card.kind {
+        case .notes(let notes): notes.paperID
+        case .model(let model): model.paperID
+        case .method(let method): method.paperID
+        case .related(let related): related.paperID
+        case .letter(let letter): letter.documentID
+        case .guide(let guide): guide.documentID
+        default: nil
+        }
+        return documentID.flatMap { id in cards.first { document(for: $0)?.id == id }?.id }
+    }
+
+    /// The first card of a group: a page, or a card beside nothing.
+    private func isHead(_ card: Card) -> Bool {
+        card.kind.isPage || (card.kind.sitsBeside && owner(of: card) == nil)
+    }
+
+    /// The card a group's chips sit beside: its newest page, or the card heading it.
+    private func pageCard(of group: UUID) -> UUID? {
+        (cards.last { $0.kind.isPage && self.group(of: $0) == group } ?? cards.last { isHead($0) && self.group(of: $0) == group })?.id
+    }
+
+    /// Live cards (the cup temperatures) and photos still being read stay where they are.
+    private func folds(_ card: Card) -> Bool {
+        switch card.kind {
+        case .temperatures: false
+        case .scan(let scan): if case .read(let reading) = scan.status { reading.documentType != .other } else { false }
+        default: !isHeld(card.id)
         }
     }
 
@@ -352,31 +427,90 @@ final class CanvasModel {
         let size = cards[index].size
         if let point {
             cards[index].center = fitted(point, size: size)
+        } else if let back = cards[index].openCenter, isClear(CGRect(x: back.x - size.width / 2, y: back.y - size.height / 2, width: size.width, height: size.height), excluding: id) {
+            cards[index].center = back
         } else {
             cards[index].center = freeSpot(for: size, excluding: id)
         }
         layoutChips()
     }
 
-    /// Shrinks a card to a chip at the end of the column down the left edge.
+    /// Shrinks a card to a chip in its group down the left edge.
     private func fold(_ id: UUID) {
         guard let index = index(of: id), !cards[index].isFolded else { return }
+        cards[index].openCenter = cards[index].center
         cards[index].isFolded = true
         if !chipOrder.contains(id) { chipOrder.append(id) }
         layoutChips()
     }
 
-    /// Chips in the order they were folded, top to bottom, then a second column.
+    /// Chips down the left edge, a group at a time in the order they folded: a page (or the car
+    /// deal) on top, then what sat beside it, indented. A group that doesn't fit starts a new column.
     private func layoutChips() {
         chipOrder.removeAll { id in !cards.contains { $0.id == id && $0.isFolded } }
-        let chip = Card.chipSize
-        let perColumn = max(1, Int((canvasSize.height - 130 - 90) / (chip.height + 10)))
-        for (slot, id) in chipOrder.enumerated() {
-            guard let index = index(of: id) else { continue }
-            let column = Double(slot / perColumn), row = Double(slot % perColumn)
-            cards[index].center = CGPoint(x: 28 + chip.width / 2 + column * (chip.width + 12),
-                                          y: 130 + chip.height / 2 + row * (chip.height + 10))
+        var groups: [(key: UUID, ids: [UUID])] = []
+        for id in chipOrder {
+            guard let card = card(id) else { continue }
+            let key = group(of: card)
+            if let at = groups.firstIndex(where: { $0.key == key }) { groups[at].ids.append(id) } else { groups.append((key, [id])) }
         }
+        let top: CGFloat = 130, gap: CGFloat = 6, pad: CGFloat = 8, groupGap: CGFloat = 18
+        let bottom = canvasSize.height - (showDebug ? Self.debugPanelHeight + 10 : 90)
+        var x: CGFloat = 28, y = top
+        var trays: [ChipTray] = []
+        for group in groups {
+            let ids = group.ids.filter { card($0)?.kind.isPage == true } + group.ids.filter { card($0)?.kind.isPage != true }
+            let caption = group.key == Self.carDeal ? "Car deal" : nil
+            let trayed = ids.count > 1 || caption != nil || group.key == groupInFocus
+            var height = gap * CGFloat(ids.count - 1) + (caption == nil ? 0 : ChipTray.captionHeight)
+            for id in ids { height += card(id)?.size.height ?? 0 }
+            if y > top, y + height > bottom {
+                x += Card.chipSize.width + 2 * pad + 14
+                y = top
+            }
+            if caption != nil { y += ChipTray.captionHeight }
+            var frames: [CGRect] = []
+            for id in ids {
+                guard let index = index(of: id) else { continue }
+                let size = cards[index].size
+                cards[index].center = CGPoint(x: x + Card.chipSize.width - size.width / 2, y: y + size.height / 2)
+                frames.append(cards[index].frame)
+                y += size.height + gap
+            }
+            if trayed, let first = frames.first {
+                var frame = frames.dropFirst().reduce(first) { $0.union($1) }.insetBy(dx: -pad, dy: -pad)
+                if caption != nil {
+                    frame.origin.y -= ChipTray.captionHeight
+                    frame.size.height += ChipTray.captionHeight
+                }
+                trays.append(ChipTray(id: group.key, frame: frame, caption: caption, isInFocus: group.key == groupInFocus))
+            }
+            y += groupGap - gap
+        }
+        chipTrays = trays
+        // Nothing open sits under the chips: a card there moves to open space.
+        let column = chipColumn
+        for card in cards where !card.isFolded && folds(card) && card.id != focusedID && card.id != mouseGrip?.id
+            && column.contains(where: { $0.intersects(card.frame) }) {
+            moveCard(card.id, to: freeSpot(for: card.size, excluding: card.id))
+        }
+    }
+
+    /// The chips and their trays.
+    private var chipColumn: [CGRect] {
+        chipTrays.map(\.frame) + cards.filter(\.isFolded).map(\.frame)
+    }
+
+    /// Where open cards can start, right of the chips.
+    private var leftOfChips: CGFloat {
+        (chipColumn.map(\.maxX).max() ?? 0) + 20
+    }
+
+    /// True when a card could sit here without covering a chip, a panel or another open card.
+    private func isClear(_ rect: CGRect, excluding excluded: UUID) -> Bool {
+        let fits = rect.minX >= 0 && rect.minY >= 0 && rect.maxX <= canvasSize.width && rect.maxY <= canvasSize.height
+        let others = cards.filter { $0.id != excluded && !$0.isFolded }.map(\.frame)
+        return fits && !(chipColumn + reservedAreas + others).contains { $0.intersects(rect) }
     }
 
     /// The page in focus, or the page last in focus when focus is on something beside it.
@@ -537,6 +671,7 @@ final class CanvasModel {
         withAnimation(.spring(duration: 0.4, bounce: 0.25)) {
             cards.append(placed)
         }
+        focus(placed.id)
     }
 
     // MARK: Money
@@ -576,11 +711,13 @@ final class CanvasModel {
     /// Shows advice in its card, adding the card if there isn't one.
     func showAdvice(_ advice: Advice) {
         show(.advice(advice)) { if case .advice = $0 { true } else { false } }
+        if let id = cards.first(where: { if case .advice = $0.kind { true } else { false } })?.id { focus(id) }
     }
 
     /// Shows the checks in the pitch card, adding it if there isn't one.
     func showPitchChecks(_ checks: [PitchCheck]) {
         show(.pitch(checks)) { if case .pitch = $0 { true } else { false } }
+        if let id = cards.first(where: { if case .pitch = $0.kind { true } else { false } })?.id { focus(id) }
     }
 
     private func show(_ kind: Card.Kind, replacing matches: (Card.Kind) -> Bool) {
@@ -673,8 +810,12 @@ final class CanvasModel {
                 "Dealer and credit union compared at \(comparison.termMonths) months"
             case .temperatures:
                 "Live cup temperatures"
-            case .scan:
-                "A photo being read"
+            case .scan(let scan):
+                if case .read(let reading) = scan.status, reading.documentType == .windowSticker {
+                    "A window sticker, add-ons " + reading.addOns.map { "\($0.name) \(dollars($0.amount))" }.joined(separator: ", ")
+                } else {
+                    "A photo being read"
+                }
             case .advice:
                 "What to say to the dealer"
             case .pitch:
@@ -688,6 +829,17 @@ final class CanvasModel {
                     + "\(notes.linked.notes.filter { $0.status == .differs }.count) differ from the paper"
             case .notebook(let notebook):
                 "Lab notebook: \(notebook.notebook.title)"
+            case .guide(let guide):
+                "The protocol \(guide.lab.title), \(guide.lab.steps.count) steps, ready to guide"
+            case .letter(let letter):
+                "A dispute letter to \(letter.letter.company) asking for \(dollars(letter.letter.total, cents: true)): "
+                    + letter.letter.items.map { "\($0.title) \(dollars($0.amount, cents: true))" }.joined(separator: "; ")
+            case .related(let related):
+                "Related work for \(related.paperTitle): " + related.result.related.map { "\($0.work.shortName), \($0.work.title)" }.joined(separator: "; ")
+                    + ". Directions: " + related.result.directions.map { "\($0.title) (\($0.verdict.rawValue))" }.joined(separator: "; ")
+            case .method(let method):
+                "The method of \(method.paperTitle): varied \(method.map.varied.map(\.name).joined(separator: ", ")); "
+                    + "not controlled \(method.map.notControlled.map(\.name).joined(separator: ", "))"
             case .model(let model):
                 "The model from \(model.paperTitle), running, on \(model.condition.name)"
                     + (model.model.mismatches.isEmpty ? "" : "; \(model.model.mismatches.count) of its reported results don't follow from its own equation")
@@ -731,6 +883,9 @@ final class CanvasModel {
         )
     }
 
+    /// How far up the hand debug panel reaches from the bottom left, with its margin.
+    static let debugPanelHeight: CGFloat = 360
+
     /// Where the overlays sit: the header, the phone and paper panels, the voice bar and the
     /// hand debug panel.
     private var reservedAreas: [CGRect] {
@@ -741,7 +896,7 @@ final class CanvasModel {
             CGRect(x: canvasSize.width - 170, y: canvasSize.height - 170, width: 170, height: 170),
         ]
         if showDebug {
-            areas.append(CGRect(x: 0, y: canvasSize.height - 480, width: 384, height: 480))
+            areas.append(CGRect(x: 0, y: canvasSize.height - Self.debugPanelHeight, width: 384, height: Self.debugPanelHeight))
         }
         return areas
     }
@@ -753,7 +908,7 @@ final class CanvasModel {
         // Covering the card in focus or a chip costs as much as covering a panel.
         let inFocus = [focusedID, pageInFocus]
         let others = placed.filter { !inFocus.contains($0.id) && !$0.isFolded }.map(\.frame)
-        let reserved = reservedAreas + placed.filter { inFocus.contains($0.id) || $0.isFolded }.map(\.frame)
+        let reserved = reservedAreas + chipTrays.map(\.frame) + placed.filter { inFocus.contains($0.id) || $0.isFolded }.map(\.frame)
         let middle = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         var best = middle
         var bestScore = Double.infinity
@@ -853,9 +1008,16 @@ extension CanvasModel {
         case .loan(var loan):
             loan.documentID = document.id
             cards[index].kind = .loan(loan)
-        case .scan(let scan):
-            if case .read = scan.status { return }   // a window sticker, already shown
-            guard !document.reading.facts.isEmpty || !document.reading.allCatches.isEmpty else {
+        case .scan(var scan):
+            let hasPage = !document.reading.facts.isEmpty || !document.reading.allCatches.isEmpty
+            // A window sticker stays a sticker, with its page behind it for questions and hovers;
+            // a contract or quote whose terms couldn't be read becomes a page like any other.
+            if case .read(let offer) = scan.status, offer.documentType == .windowSticker || !hasPage {
+                scan.documentID = document.id
+                cards[index].kind = .scan(scan)
+                return
+            }
+            guard hasPage else {
                 setScanStatus(at: index, .failed("Nothing to read on this page."))
                 removeLater(cardID)
                 return
@@ -886,7 +1048,7 @@ extension CanvasModel {
             let source = answer.sources[index]
             guard let capture = documents[source.documentID]?.captureID, let rect = source.box else { return nil }
             return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
-        case .labStep:
+        case .labStep, .work:
             return nil
         case .cited(let cardID, let index):
             guard let card = card(cardID), let citation = citations(for: card)[safe: index],
@@ -955,6 +1117,26 @@ extension CanvasModel {
     /// The words on a page a card cites, in the order its hover targets number them.
     func citations(for card: Card) -> [Citation] {
         switch card.kind {
+        case .letter(let card):
+            return (card.letter.items + card.letter.questions).map { item in
+                Citation(documentID: card.documentID, cited: item.cited ?? Cited(quote: "", location: nil),
+                         heading: "\(item.title): \(dollars(item.amount, cents: true))", detail: "\(item.reason) (\(item.math))")
+            }
+        case .related(let related):
+            return related.result.directions.map { direction in
+                Citation(documentID: related.paperID, cited: direction.cited ?? Cited(quote: "", location: nil),
+                         heading: direction.title, detail: direction.note)
+            }
+        case .method(let method):
+            return method.map.items.map { item in
+                Citation(documentID: method.paperID, cited: item.cited ?? Cited(quote: "", location: nil), heading: item.name,
+                         detail: item.cited == nil ? "Not in the paper: Grasp's suggestion of something to check." : item.detail)
+            }
+        case .guide(let guide):
+            return guide.lab.steps.map { step in
+                Citation(documentID: guide.documentID, cited: step.cited, heading: "Step \(step.number): \(step.instruction)",
+                         detail: Self.checkWords(step.check))
+            }
         case .model(let model):
             let id = model.paperID
             var list = [Citation(documentID: id, cited: model.model.equation, heading: "The paper's equation",
@@ -978,8 +1160,87 @@ extension CanvasModel {
         }
     }
 
+    /// Shows a paper's method map beside the paper, replacing an earlier one for it.
+    func showMethod(_ method: MethodCard) {
+        show(.method(method)) { if case .method(let old) = $0 { old.paperID == method.paperID } else { false } }
+        guard let id = cards.last(where: { if case .method(let old) = $0.kind { old.paperID == method.paperID } else { false } })?.id,
+              let paper = cards.first(where: { document(for: $0)?.id == method.paperID }) else { return }
+        focus(paper.id)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// Shows a dispute letter beside its bill, replacing an earlier one for it.
+    func showLetter(_ letter: LetterCard) {
+        show(.letter(letter)) { if case .letter(let old) = $0 { old.documentID == letter.documentID } else { false } }
+        guard let id = cards.last(where: { if case .letter(let old) = $0.kind { old.documentID == letter.documentID } else { false } })?.id,
+              let bill = cards.first(where: { document(for: $0)?.id == letter.documentID }) else { return }
+        focus(bill.id)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// Shows related work beside the paper, replacing an earlier search for it.
+    func showRelated(_ related: RelatedCard) {
+        show(.related(related)) { if case .related(let old) = $0 { old.paperID == related.paperID } else { false } }
+        guard let id = cards.last(where: { if case .related(let old) = $0.kind { old.paperID == related.paperID } else { false } })?.id,
+              let paper = cards.first(where: { document(for: $0)?.id == related.paperID }) else { return }
+        focus(paper.id)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// Shows a protocol's steps beside its page, replacing an earlier guide.
+    func showGuide(_ guide: GuideCard) {
+        show(.guide(guide)) { if case .guide = $0 { true } else { false } }
+        guard let id = cards.last(where: { if case .guide = $0.kind { true } else { false } })?.id else { return }
+        if let page = cards.first(where: { document(for: $0)?.id == guide.documentID }) { focus(page.id) }
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// A guided run takes the canvas: the protocol page and anything beside it fold into chips,
+    /// the guide goes left, and the live cups go beside it.
+    func layOutGuidedRun() {
+        guard let guideID = cards.first(where: { if case .guide = $0.kind { true } else { false } })?.id else { return }
+        if !showsTemperatures { toggleTemperatures() }
+        withAnimation(.spring(duration: 0.5, bounce: 0.15)) {
+            if let guide = card(guideID) { groupInFocus = group(of: guide) }
+            for card in cards where card.id != guideID && !card.isFolded && folds(card) {
+                fold(card.id)
+            }
+            let left = leftOfChips
+            guard let guide = index(of: guideID) else { return }
+            cards[guide].isFolded = false
+            chipOrder.removeAll { $0 == guideID }
+            let guideSize = cards[guide].size
+            cards[guide].center = CGPoint(x: left + guideSize.width / 2, y: 120 + guideSize.height / 2)
+            if let cups = cards.firstIndex(where: { $0.kind == .temperatures }) {
+                let size = cards[cups].size
+                cards[cups].center = CGPoint(x: left + guideSize.width + 20 + size.width / 2, y: panelHeight + 12 + size.height / 2)
+            }
+            layoutChips()
+        }
+        focusedID = guideID
+    }
+
+    /// How Grasp will know a step is done, in words.
+    static func checkWords(_ check: LabProtocol.Step.Check) -> String {
+        switch check {
+        case .sayDone: "Grasp moves on when you say \u{201C}done\u{201D} or press the button."
+        case .rises(let cup): "Grasp watches probe \(cup.rawValue) for the pour."
+        case .drops(let cup): "Grasp watches probe \(cup.rawValue) for the drop."
+        case .below(let cup, let limit): "Grasp waits until cup \(cup.rawValue) is below \(Int(limit)) °C."
+        case .above(let cup, let limit): "Grasp waits until cup \(cup.rawValue) is above \(Int(limit)) °C."
+        case .wait(let seconds): "Grasp times \(clockTime(seconds))."
+        }
+    }
+
     /// Shows a written-up lab session, replacing the last one.
     func showNotebook(_ notebook: NotebookCard) {
+        // The notebook is what's worth reading now: the guide and the other side cards fold away.
+        withAnimation(.spring(duration: 0.45)) {
+            for card in cards where card.kind.sitsBeside && !card.isFolded {
+                if case .notebook = card.kind { continue }
+                fold(card.id)
+            }
+        }
         show(.notebook(notebook)) { if case .notebook = $0 { true } else { false } }
         if let id = cards.first(where: { if case .notebook = $0.kind { true } else { false } })?.id { focus(id) }
     }
@@ -1019,36 +1280,55 @@ extension CanvasModel {
         return box.flatMap { $0 == .zero ? nil : $0 }
     }
 
-    /// Shows a new answer, replacing the last one so answers don't pile up, beside the page in focus.
+    /// Shows a new answer beside the page in focus; the one before it folds into the page's group.
     func showAnswer(_ answer: AnswerCard) {
-        show(.answer(answer)) { if case .answer = $0 { true } else { false } }
-        guard let id = cards.first(where: { if case .answer = $0.kind { true } else { false } })?.id else { return }
-        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+        var answer = answer
+        answer.pageID = pageInFocus.flatMap { self.card($0)?.id }
+        var added = Card(center: .zero, kind: .answer(answer))
+        added.center = freeSpot(for: added.size)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            cards.append(added)
+            dock(added.id)
+            // Earlier answers about the same page stay in its group as chips, the last few of them.
+            let earlier = chipOrder.filter { id in
+                if case .answer(let old)? = self.card(id)?.kind { old.pageID == answer.pageID } else { false }
+            }
+            let dropped = Set(earlier.dropLast(Self.answersKept - 1))
+            cards.removeAll { dropped.contains($0.id) }
+            layoutChips()
+        }
     }
+
+    /// Answers kept about one page: the open one and the chips under its page.
+    static let answersKept = 4
 
     /// Puts a card just right of the card in focus (a page, a notebook), sliding that card left
     /// (not past the chips) to make room, and below the phone panel when it would run under it.
     private func dock(_ id: UUID) {
-        guard let pageID = pageInFocus, pageID != id, index(of: pageID) != nil, let found = index(of: id) else { return }
-        if cards[found].isFolded {
+        guard let pageID = pageInFocus, pageID != id, let page = index(of: pageID), !cards[page].isFolded, index(of: id) != nil else {
+            // Nothing open to sit beside: it opens on its own.
+            open(id, at: nil)
+            return
+        }
+        if let found = index(of: id), cards[found].isFolded {
             cards[found].isFolded = false
             chipOrder.removeAll { $0 == id }
         }
         // One card beside the page at a time; the others fold into chips.
-        for other in cards where other.id != id && Self.sitsBeside(other.kind) && !other.isFolded {
+        for other in cards where other.id != id && other.id != pageID && other.kind.sitsBeside && !other.isFolded {
             fold(other.id)
         }
-        guard let page = index(of: pageID), !cards[page].isFolded, let index = index(of: id) else { return }
+        guard let page = index(of: pageID), let index = index(of: id) else { return }
         let pageSize = cards[page].size, size = cards[index].size
-        let hasChips = !chipOrder.isEmpty
-        let leftmost = hasChips ? 28 + Card.chipSize.width + 20 : 20
+        let leftmost = leftOfChips
         let rightmost = canvasSize.width - 20
         var pageMinX = cards[page].frame.minX
         if pageMinX + pageSize.width + 20 + size.width > rightmost {
             pageMinX = max(leftmost, rightmost - size.width - 20 - pageSize.width)
         }
         cards[page].center.x = pageMinX + pageSize.width / 2
-        let x = pageMinX + pageSize.width + 20 + size.width / 2
+        // On a narrow canvas the answer stays on screen, over the page's right edge.
+        let x = min(pageMinX + pageSize.width + 20 + size.width / 2, rightmost - size.width / 2)
         var top = cards[page].frame.minY
         if x + size.width / 2 > canvasSize.width - 320 { top = max(top, panelHeight + 12) }
         // Clear of the voice bar at the bottom middle, unless it's off to the right of it.
@@ -1072,17 +1352,39 @@ extension CanvasModel {
         switch card.kind {
         case .document(let document): document
         case .loan(let loan): loan.documentID.flatMap { documents[$0] }
+        case .scan(let scan): scan.documentID.flatMap { documents[$0] }
+        case .comparison(let comparison): comparison.dealer.documentID.flatMap { documents[$0] }
         default: nil
         }
     }
 
+    /// Every page behind the cards on the canvas, chips included, the frontmost card's first.
+    var pagesOnCanvas: [PageDocument] {
+        var seen = Set<UUID>()
+        return cards.reversed().flatMap { card -> [UUID] in
+            switch card.kind {
+            case .comparison(let comparison): [comparison.dealer.documentID, comparison.other.documentID].compactMap { $0 }
+            default: document(for: card).map { [$0.id] } ?? []
+            }
+        }
+        .compactMap { seen.insert($0).inserted ? documents[$0] : nil }
+    }
+
     func provenance(for target: HoverTarget) -> Provenance? {
         switch target {
+        case .work(let cardID, let index):
+            guard case .related(let related)? = card(cardID)?.kind, let work = related.result.works[safe: index] else { return nil }
+            let why = related.result.related.first { $0.work.id == work.id }?.why
+            return Provenance(heading: work.title,
+                              origin: "OpenAlex · \(work.shortName) · \(work.citations) citation\(work.citations == 1 ? "" : "s") · click to open",
+                              quote: work.abstract.isEmpty ? nil : String(work.abstract.prefix(280)) + (work.abstract.count > 280 ? "…" : ""),
+                              formula: why ?? work.doi)
         case .cited(let cardID, let index):
             guard let card = card(cardID), let citation = citations(for: card)[safe: index],
                   let document = documents[citation.documentID] else { return nil }
             let crop = citation.cited.location.flatMap { box(for: $0, in: document) }.flatMap { PageCrop.around($0, in: document.image) }
-            return Provenance(heading: citation.heading, origin: origin(of: document), quote: citation.cited.quote,
+            return Provenance(heading: citation.heading, origin: origin(of: document),
+                              quote: citation.cited.quote.isEmpty ? nil : citation.cited.quote,
                               formula: citation.detail, crop: crop?.image, highlight: crop?.highlight)
         case .labStep(let cardID, let index):
             guard case .notebook(let card)? = card(cardID)?.kind, card.notebook.steps.indices.contains(index) else { return nil }

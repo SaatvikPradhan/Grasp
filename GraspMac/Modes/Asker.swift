@@ -13,8 +13,9 @@ final class Asker {
 
     @ObservationIgnored private let canvas: CanvasModel
     @ObservationIgnored private let voiceOut: VoiceOut
-    /// The last few questions and answers, so "and without the late fee?" makes sense.
-    @ObservationIgnored private var conversation: [Exchange] = []
+    /// The last few questions and answers about each page, so "and without the late fee?" makes
+    /// sense, and going back to a page picks up its conversation.
+    @ObservationIgnored private var conversations: [UUID?: [Exchange]] = [:]
 
     init(canvas: CanvasModel, voiceOut: VoiceOut) {
         self.canvas = canvas
@@ -26,12 +27,13 @@ final class Asker {
     func ask(_ question: String) async -> String {
         guard let client = GeminiClient.fromAppKeys else { return GeminiClient.Failure.missingKey.localizedDescription }
         // The pages on the canvas, the one in focus first, then newest first; every page read if none are showing.
-        let onCanvas = canvas.cards.reversed().compactMap { canvas.document(for: $0) }
+        let onCanvas = canvas.pagesOnCanvas
         let focused = canvas.focusedDocument
         let documents = [focused].compactMap { $0 }
             + (onCanvas.isEmpty ? canvas.documents.values.sorted { $0.readAt > $1.readAt } : onCanvas).filter { $0.id != focused?.id }
         // A cleared canvas starts a new conversation.
-        if canvas.cards.isEmpty { conversation = [] }
+        if canvas.cards.isEmpty { conversations = [:] }
+        let conversation = conversations[focused?.id] ?? []
         isAnswering = true
         defer { isAnswering = false }
         do {
@@ -45,7 +47,7 @@ final class Asker {
             let sources = answer.quotes.compactMap { source(for: $0, in: documents) }
             canvas.showAnswer(AnswerCard(question: question, answer: answer, sources: sources,
                                          followsOn: conversation.last?.question))
-            conversation = Array((conversation + [Exchange(question: question, answer: answer)]).suffix(4))
+            conversations[focused?.id] = Array((conversation + [Exchange(question: question, answer: answer)]).suffix(4))
             if let first = sources.first(where: { $0.box != nil }),
                let capture = canvas.documents[first.documentID]?.captureID, let box = first.box {
                 onPointAt?(capture, LinkHighlight(text: first.quote, rect: box, kind: .term))

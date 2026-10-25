@@ -36,7 +36,7 @@ struct ScanCardView: View {
     @ViewBuilder
     private func found(_ reading: OfferReading) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title(reading.documentType))
+            Text(Self.title(reading.documentType))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             if reading.addOns.isEmpty {
@@ -60,7 +60,7 @@ struct ScanCardView: View {
         }
     }
 
-    private func title(_ type: OfferReading.DocumentType) -> String {
+    static func title(_ type: OfferReading.DocumentType) -> String {
         switch type {
         case .loanContract: "Loan contract"
         case .windowSticker: "Window sticker"

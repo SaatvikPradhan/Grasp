@@ -20,8 +20,52 @@ final class Researcher {
         if Self.isNotes(document) {
             guard paper(besides: document) != nil else { return }
             Task { await link(notes: document.text.joined(separator: "\n"), from: document) }
-        } else if Self.isPaper(document) {
+        } else if Self.isPaper(document), !document.reading.kind.lowercased().contains("protocol") {
             Task { await runModel(of: document) }
+        }
+    }
+
+    /// The paper the person is working on: the page in focus, or the newest paper on the canvas.
+    var currentPaper: PageDocument? {
+        if let focused = canvas.focusedDocument, !Self.isNotes(focused) { return focused }
+        return canvas.cards.compactMap { canvas.document(for: $0) }.filter { Self.isPaper($0) }.max { $0.readAt < $1.readAt }
+    }
+
+    /// Maps the paper's method: what was varied, measured, held the same and left uncontrolled.
+    @discardableResult
+    func mapMethod() async -> String {
+        guard let client = GeminiClient.fromAppKeys else { return GeminiClient.Failure.missingKey.localizedDescription }
+        guard let paper = currentPaper else { return "Hand Grasp a paper first" }
+        isLinking = true
+        defer { isLinking = false }
+        do {
+            let map = try await MethodReader(client: client).read(paper: paper.text)
+            canvas.showMethod(MethodCard(paperID: paper.id, paperTitle: paper.reading.title, map: map))
+            return "Mapped the method: \(map.notControlled.count) things it didn't control"
+        } catch {
+            return "Couldn't map the method: \(error.localizedDescription)"
+        }
+    }
+
+    /// Papers close to this one from OpenAlex, and whether each direction is already studied: the
+    /// directions from linked notes when there are some, otherwise ones grown from the paper.
+    @discardableResult
+    func findRelatedWork() async -> String {
+        guard let client = GeminiClient.fromAppKeys else { return GeminiClient.Failure.missingKey.localizedDescription }
+        guard let paper = currentPaper else { return "Hand Grasp a paper first" }
+        let given = canvas.cards.compactMap { card -> [RelatedWorkFinder.Given]? in
+            guard case .notes(let notes) = card.kind, notes.paperID == paper.id else { return nil }
+            return notes.linked.directions.map { RelatedWorkFinder.Given(title: $0.title, why: $0.why, cited: Cited(quote: $0.quote, location: $0.location)) }
+        }.first ?? []
+        isLinking = true
+        defer { isLinking = false }
+        do {
+            let result = try await RelatedWorkFinder(client: client).find(paper: paper.text, title: paper.reading.title, directions: given)
+            canvas.showRelated(RelatedCard(paperID: paper.id, paperTitle: paper.reading.title, result: result))
+            let open = result.directions.filter { $0.verdict == .open }.count
+            return "Found \(result.related.count) related papers; \(open) of \(result.directions.count) directions look open"
+        } catch {
+            return "Couldn't search the literature: \(error.localizedDescription)"
         }
     }
 

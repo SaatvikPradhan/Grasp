@@ -11,6 +11,7 @@ struct CardView: View {
     /// What questions and commands go to, when there's more than one card.
     var isFocused = false
     let probes: ProbeHub
+    let guide: ProtocolGuide
 
     var body: some View {
         content
@@ -73,6 +74,14 @@ struct CardView: View {
             NotebookCardView(cardID: card.id, card: notebook)
         case .model(let model):
             ModelCardView(cardID: card.id, card: model, probes: probes)
+        case .guide(let card):
+            GuideCardView(cardID: self.card.id, card: card, guide: guide, probes: probes)
+        case .method(let method):
+            MethodCardView(cardID: card.id, card: method)
+        case .related(let related):
+            RelatedCardView(cardID: card.id, card: related)
+        case .letter(let letter):
+            LetterCardView(cardID: card.id, card: letter)
         }
     }
 
@@ -96,34 +105,44 @@ struct CardView: View {
 }
 
 /// A card out of focus, as a chip: a page's title and what's wrong with it, or what a card
-/// beside a page holds. Grab or click it to open it.
+/// beside a page holds, smaller, under its page. Grab or click it to open it.
 struct FoldedCardView: View {
     let card: Card
 
+    private var isSide: Bool { !card.kind.isPage }
+
     var body: some View {
-        HStack(spacing: 10) {
-            if case .document(let document) = card.kind {
-                Image(nsImage: document.image)
+        HStack(spacing: isSide ? 8 : 10) {
+            if let photo {
+                Image(nsImage: photo)
                     .resizable()
                     .scaledToFill()
                     .frame(width: 34, height: 44)
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             } else {
                 Image(systemName: symbol)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: isSide ? 14 : 18, weight: .semibold))
                     .foregroundStyle(Theme.accent)
-                    .frame(width: 34, height: 44)
+                    .frame(width: isSide ? 22 : 34, height: isSide ? 28 : 44)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: isSide ? 1 : 3) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: isSide ? 12 : 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                 detail
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: isSide ? 11 : 12, weight: .medium))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    private var photo: NSImage? {
+        switch card.kind {
+        case .document(let document): document.image
+        case .scan(let scan): scan.image
+        default: nil
         }
     }
 
@@ -133,6 +152,14 @@ struct FoldedCardView: View {
         case .notes: "checklist"
         case .model: "function"
         case .notebook: "book.closed"
+        case .guide: "list.number"
+        case .method: "point.3.connected.trianglepath.dotted"
+        case .related: "books.vertical"
+        case .letter: "envelope"
+        case .loan: "car"
+        case .comparison: "arrow.left.arrow.right"
+        case .advice: "quote.bubble"
+        case .pitch: "ear"
         default: "rectangle"
         }
     }
@@ -144,7 +171,17 @@ struct FoldedCardView: View {
         case .notes(let notes): "Your notes on \(notes.paperTitle)"
         case .model(let model): "Live model: \(model.paperTitle)"
         case .notebook(let notebook): notebook.notebook.title
-        default: "Card"
+        case .guide(let guide): guide.lab.title
+        case .method(let method): "Method: \(method.paperTitle)"
+        case .related(let related): "Related work: \(related.paperTitle)"
+        case .letter(let letter): "Dispute to \(letter.letter.company)"
+        case .loan(let loan): loan.title
+        case .comparison: "Dealer vs credit union"
+        case .scan(let scan):
+            if case .read(let reading) = scan.status { ScanCardView.title(reading.documentType) } else { "Photo" }
+        case .advice: "What to say"
+        case .pitch: "The pitch, checked"
+        case .temperatures: "Cup temperatures"
         }
     }
 
@@ -176,9 +213,57 @@ struct FoldedCardView: View {
                 .foregroundStyle(wrong > 0 ? Theme.warn : Theme.muted)
         case .notebook(let notebook):
             Text("\(notebook.notebook.steps.count) steps · \(clockTime(notebook.notebook.duration))").foregroundStyle(Theme.muted)
-        default:
+        case .guide(let guide):
+            Text("protocol · \(guide.lab.steps.count) steps").foregroundStyle(Theme.muted)
+        case .method(let method):
+            Text("\(method.map.varied.count) varied · \(method.map.notControlled.count) not controlled").foregroundStyle(Theme.muted)
+        case .letter(let letter):
+            Text("\(dollars(letter.letter.total, cents: true)) to get back").foregroundStyle(Theme.hot)
+        case .related(let related):
+            let open = related.result.directions.filter { $0.verdict == .open }.count
+            Text("\(related.result.related.count) papers · \(open) direction\(open == 1 ? "" : "s") open").foregroundStyle(Theme.muted)
+        case .loan(let loan):
+            Text("\(dollars(loan.loan.totalPaid)) over \(loan.loan.termMonths) months").foregroundStyle(Theme.muted)
+        case .comparison(let comparison):
+            Text("compared at \(comparison.termMonths) months").foregroundStyle(Theme.muted)
+        case .scan(let scan):
+            if case .read(let reading) = scan.status, !reading.addOns.isEmpty {
+                Text("add-ons · \(dollars(reading.addOnTotal))").foregroundStyle(Theme.warn)
+            } else {
+                Text("read").foregroundStyle(Theme.muted)
+            }
+        case .advice(let advice):
+            Text("\(advice.lines.count) things to ask").foregroundStyle(Theme.muted)
+        case .pitch(let checks):
+            Text("\(checks.count) number\(checks.count == 1 ? "" : "s") checked").foregroundStyle(Theme.muted)
+        case .temperatures:
             EmptyView()
         }
+    }
+}
+
+/// The tray behind a group of chips: a page and what sat beside it, or the car deal.
+struct ChipTrayView: View {
+    let tray: ChipTray
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Theme.surface.opacity(0.45))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(tray.isInFocus ? Theme.accent.opacity(0.7) : Theme.line, lineWidth: tray.isInFocus ? 1.5 : 1)
+            )
+            .overlay(alignment: .topLeading) {
+                if let caption = tray.caption {
+                    Text(caption.uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.muted)
+                        .padding(.leading, 12)
+                        .padding(.top, 9)
+                }
+            }
+            .frame(width: tray.frame.width, height: tray.frame.height)
     }
 }
 

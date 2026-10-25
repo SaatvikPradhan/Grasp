@@ -138,6 +138,27 @@ Valley State University 2027–28 offer: "$28,300 in aid · $0 remaining · You'
 
 ---
 
+## 7. A lab protocol · `protocol.html`
+
+"How much does a lid slow cooling?": 8 steps. Read it, then say "I'm starting the experiment" (or ⌘⇧G). Grasp should read these checks:
+
+| Step | Grasp knows it's done when |
+|---|---|
+| 1. Place the cups, clip the probes | you say "done" |
+| 2. Pour hot water into A | probe A jumps up |
+| 3. Pour into B, lid on | probe B jumps up (on simulated probes, "done" pours and puts the lid on) |
+| 4. Pour into C | probe C jumps up |
+| 5. Wait until C is below 85 °C | probe C reads under 85 |
+| 6. Two ice cubes into C | probe C drops |
+| 7. Leave everything for 2 minutes | a 2:00 timer |
+| 8. Read out the final temperatures | you say "done" |
+
+Saying "done" before the probe agrees is allowed, and it's noted as different from the page.
+
+**The dispute (phone bill):** ⌘⇧W should come to **$42.00**: $10 (the total doesn't add up), $25 (promo not applied), $7 (late fee on an on-time payment). It should ask about the $15 protection plan and the $3.49 recovery fee without counting them.
+
+---
+
 ## What to look for when you test
 
 - **Catches show in red** on the document card, and hovering one shows the clause on the photo.

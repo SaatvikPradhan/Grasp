@@ -95,6 +95,8 @@ struct AnswerCard: Equatable {
     var sources: [Source]
     /// The question this one follows on from, if it does.
     var followsOn: String?
+    /// The card in focus when it was asked: the answer folds away into that card's group.
+    var pageID: UUID?
 }
 
 /// Someone's notes on a paper, each tied to the passage it's about, and where the research could go.
@@ -120,6 +122,32 @@ struct ModelCard: Equatable {
 
     var condition: PaperModel.Condition { model.conditions[min(selected, model.conditions.count - 1)] }
     var k: Double { twistedK ?? condition.k.value }
+}
+
+/// A paper's method as a map, every box tied to its sentence.
+struct MethodCard: Equatable {
+    var paperID: UUID
+    var paperTitle: String
+    var map: MethodMap
+}
+
+/// Papers close to a paper, and whether each direction from it is already studied.
+struct RelatedCard: Equatable {
+    var paperID: UUID
+    var paperTitle: String
+    var result: RelatedWork
+}
+
+/// A dispute letter for a bill, with the amounts Swift worked out.
+struct LetterCard: Equatable {
+    var documentID: UUID
+    var letter: DisputeLetter
+}
+
+/// A protocol to follow step by step; the live run is in `ProtocolGuide`.
+struct GuideCard: Equatable {
+    var documentID: UUID
+    var lab: LabProtocol
 }
 
 /// A lab session written up, with the frames it was written from.
@@ -153,6 +181,8 @@ struct Scan: Equatable {
 
     var image: NSImage
     var status: Status
+    /// The page as the general reader read it, once it has, for questions and hovers.
+    var documentID: UUID?
 }
 
 /// The value a twist turns.
@@ -194,6 +224,14 @@ struct Card: Identifiable, Equatable {
         case notebook(NotebookCard)
         /// A paper's model, running.
         case model(ModelCard)
+        /// A protocol, guided step by step.
+        case guide(GuideCard)
+        /// A paper's method, mapped.
+        case method(MethodCard)
+        /// Related papers from OpenAlex.
+        case related(RelatedCard)
+        /// A dispute letter, ready to send.
+        case letter(LetterCard)
     }
 
     /// Swipe flips a card between its two ways of drawing the same numbers (bars and lines).
@@ -213,8 +251,13 @@ struct Card: Identifiable, Equatable {
     var isArriving = false
     /// A page out of focus, shrunk to a chip: its title and what's wrong with it.
     var isFolded = false
+    /// Where it sat before it folded, so it opens there again.
+    var openCenter: CGPoint?
 
+    /// A page's chip, at the top of its group…
     static let chipSize = CGSize(width: 260, height: 66)
+    /// …and the smaller chips under it: answers, notes, models, what to say.
+    static let sideChipSize = CGSize(width: 240, height: 50)
 
     init(id: UUID = UUID(), center: CGPoint, kind: Kind) {
         self.id = id
@@ -223,7 +266,7 @@ struct Card: Identifiable, Equatable {
     }
 
     var size: CGSize {
-        if isFolded { return Self.chipSize }
+        if isFolded { return kind.isPage ? Self.chipSize : Self.sideChipSize }
         return switch kind {
         case .loan: CGSize(width: 460, height: 310)
         case .comparison: CGSize(width: 540, height: 340)
@@ -236,6 +279,10 @@ struct Card: Identifiable, Equatable {
         case .notes(let notes): CGSize(width: Self.notesWidth, height: Self.notesHeight(notes))
         case .notebook(let notebook): CGSize(width: Self.notebookWidth, height: Self.notebookHeight(notebook))
         case .model(let model): CGSize(width: 600, height: model.comparesCups ? 470 : 500)
+        case .guide(let guide): CGSize(width: 500, height: 316 + 22 * Double(guide.lab.steps.count))
+        case .method(let method): CGSize(width: 600, height: Self.methodHeight(method.map))
+        case .related(let related): CGSize(width: 600, height: Self.relatedHeight(related.result))
+        case .letter(let letter): CGSize(width: 500, height: Self.letterHeight(letter.letter))
         }
     }
 
@@ -268,7 +315,7 @@ struct Card: Identifiable, Equatable {
             // k in thousandths: 0.019 per minute is 19.
             Dial(value: Int((card.k * 1000).rounded()), range: 1...100, step: 1, unit: "",
                  display: String(format: "k %.3f per %@", card.k, card.model.timeUnit))
-        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter:
             nil
         }
     }
@@ -293,7 +340,7 @@ struct Card: Identifiable, Equatable {
         case .model(var card):
             card.twistedK = Double(value) / 1000
             kind = .model(card)
-        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter:
             return false
         }
         return true
@@ -322,6 +369,28 @@ struct Card: Identifiable, Equatable {
         return 40 + 62 + notes + directions + 8
     }
 
+    // MARK: Related work and letter layout
+
+    static func relatedHeight(_ result: RelatedWork) -> Double {
+        let papers = 42 * Double(min(result.related.count, 4))
+        let directions = 48 * Double(result.directions.count)
+        return 300 + papers + directions
+    }
+
+    static func letterHeight(_ letter: DisputeLetter) -> Double {
+        let items = 44 * Double(letter.items.count)
+        let questions = letter.questions.isEmpty ? 0 : 26 + 22 * Double(letter.questions.count)
+        return 268 + items + questions
+    }
+
+    // MARK: Method layout
+
+    static func methodHeight(_ map: MethodMap) -> Double {
+        let flow = 34 + 44 * Double(max(map.varied.count, map.measured.count, map.analysis == nil ? 0 : 1, 1))
+        let lists = 26 + 40 * Double(max(map.controlled.count, map.notControlled.count, 1))
+        return 40 + 44 + 62 + 10 + flow + 10 + 28 + 10 + lists + 10 + 18
+    }
+
     // MARK: Notebook layout
 
     /// Steps on the left, what they show and what to try next on the right.
@@ -333,7 +402,7 @@ struct Card: Identifiable, Equatable {
         let steps = 22 + notebook.steps.reduce(0.0) { total, step in total + (step.said == nil ? 24 : 38) }
         let observations = notebook.observations.isEmpty ? 0 : 24 + Double(notebook.observations.count) * 56
         let next = notebook.next.isEmpty ? 0 : 24 + Double(notebook.next.count) * 38
-        return 40 + 66 + 10 + max(steps, observations + next) + 10 + 22
+        return 40 + (notebook.protocolRecord == nil ? 66 : 84) + 10 + max(steps, observations + next) + 10 + 22
     }
 
     // MARK: Document layout
@@ -367,4 +436,33 @@ struct Card: Identifiable, Equatable {
         }
         return 88
     }
+}
+
+extension Card.Kind {
+    /// A page, or a card made from one (a loan, a window sticker): it heads a group of chips.
+    var isPage: Bool {
+        switch self {
+        case .document, .loan, .comparison, .scan: true
+        default: false
+        }
+    }
+
+    /// Cards that sit beside the page in focus: one at a time, the rest as chips in its group.
+    var sitsBeside: Bool {
+        switch self {
+        case .answer, .notes, .model, .notebook, .guide, .method, .related, .letter: true
+        default: false
+        }
+    }
+}
+
+/// A group of chips down the left edge: a page and what sat beside it, or the car deal.
+struct ChipTray: Identifiable, Equatable {
+    var id: UUID
+    var frame: CGRect
+    var caption: String?
+    /// The group of the card in focus, drawn in the accent colour like the card.
+    var isInFocus: Bool
+
+    static let captionHeight = 20.0
 }

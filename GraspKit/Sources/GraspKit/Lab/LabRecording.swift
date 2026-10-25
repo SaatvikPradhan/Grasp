@@ -29,12 +29,15 @@ public struct LabRecording: Sendable {
     /// Probe readings, `time` in seconds since the start.
     public var readings: [Reading]
     public var duration: Double
+    /// The protocol followed, when the run was guided.
+    public var protocolRecord: ProtocolRecord?
 
-    public init(frames: [Frame], speech: [Line], readings: [Reading], duration: Double) {
+    public init(frames: [Frame], speech: [Line], readings: [Reading], duration: Double, protocolRecord: ProtocolRecord? = nil) {
         self.frames = frames
         self.speech = speech
         self.readings = readings
         self.duration = duration
+        self.protocolRecord = protocolRecord
     }
 }
 

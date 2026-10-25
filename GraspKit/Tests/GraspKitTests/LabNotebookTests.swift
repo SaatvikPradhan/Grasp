@@ -100,3 +100,19 @@ struct LiveLabNotebookTests {
         #expect(checked)
     }
 }
+
+struct NotebookEventTests {
+    @Test func eachProbeEventGoesToItsNearestStepAndShowsWhereTheJumpEnded() {
+        let recording = LabRehearsal.recording()
+        let raw = LabNotebookWriter.Raw(title: "", summary: "", steps: [
+            .init(seconds: 80, did: "Waited for C to cool", said: nil, cup: "C"),
+            .init(seconds: 87, did: "Added ice to cup C", said: nil, cup: "C"),
+            .init(seconds: 9, did: "Poured into A", said: nil, cup: "A"),
+        ], observations: [], next: [])
+        let notebook = LabNotebookWriter.checked(raw, recording: recording, trace: SensorTrace(readings: recording.readings))
+        #expect(notebook.steps.map(\.did) == ["Poured into A", "Waited for C to cool", "Added ice to cup C"])
+        #expect(notebook.steps[1].event == nil)
+        #expect(notebook.steps[2].event?.kind == .dropped)
+        #expect(abs((notebook.steps[0].celsius ?? 0) - 86.5) < 2)
+    }
+}

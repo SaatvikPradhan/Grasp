@@ -54,6 +54,47 @@ public struct LabProtocol: Equatable, Sendable {
     }
 }
 
+/// A protocol as it was followed, for the notebook: each step, when it was done and how Grasp knew.
+public struct ProtocolRecord: Equatable, Sendable {
+    public struct Step: Equatable, Sendable {
+        public var number: Int
+        public var instruction: String
+        /// Seconds into the run, when it was done; nil if the run stopped first.
+        public var finished: Double?
+        /// "probe B rose from 21.5 to 88.0 °C", "timer", "you said done".
+        public var how: String?
+    }
+
+    public var title: String
+    public var steps: [Step]
+    public var deviations: [ProtocolRun.Deviation]
+
+    public init(_ run: ProtocolRun) {
+        title = run.lab.title
+        steps = run.lab.steps.enumerated().map { index, step in
+            let done = run.done.first { $0.step == index }
+            let how: String? = switch done?.how {
+            case .probe(let text): text
+            case .timer: "timer"
+            case .said: "you said done"
+            case nil: nil
+            }
+            return Step(number: step.number, instruction: step.instruction, finished: done?.finished, how: how)
+        }
+        deviations = run.deviations
+    }
+
+    /// The log as the notebook writer reads it.
+    public var text: String {
+        let lines = steps.map { step in
+            step.finished.map { "\(clockTime($0)) step \(step.number) done (\(step.how ?? "")): \(step.instruction)" }
+                ?? "step \(step.number) not reached: \(step.instruction)"
+        }
+        let off = deviations.map { "\(clockTime($0.seconds)) differed from the protocol: \($0.text)" }
+        return ([title] + lines + off).joined(separator: "\n")
+    }
+}
+
 /// A protocol being followed: which step it's on, when each step was done and how Grasp knows,
 /// and anything that went differently from the page (a step done early, cut short, or said done
 /// without the probe seeing it). Fed the latest readings once a second.

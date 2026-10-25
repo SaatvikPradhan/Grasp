@@ -14,6 +14,8 @@ struct GraspMacApp: App {
     @State private var asker: Asker
     @State private var researcher: Researcher
     @State private var lab: LabSession
+    @State private var guide: ProtocolGuide
+    @State private var disputer: Disputer
 
     init() {
         let canvas = CanvasModel()
@@ -25,23 +27,30 @@ struct GraspMacApp: App {
         let researcher = Researcher(canvas: canvas)
         let hands = HandPipeline(), phone = PhoneLink(), probes = ProbeHub()
         let lab = LabSession(canvas: canvas, probes: probes, phone: phone, hands: hands)
+        let guide = ProtocolGuide(canvas: canvas, probes: probes, lab: lab, voiceOut: money.voiceOut)
+        _guide = State(initialValue: guide)
+        let disputer = Disputer(canvas: canvas)
+        _disputer = State(initialValue: disputer)
         _hands = State(initialValue: hands)
         _phone = State(initialValue: phone)
         _probes = State(initialValue: probes)
         _asker = State(initialValue: asker)
         _researcher = State(initialValue: researcher)
         _lab = State(initialValue: lab)
-        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab))
+        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab, guide: guide, disputer: disputer))
     }
 
     var body: some Scene {
         Window("Grasp", id: "canvas") {
-            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab)
+            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, guide: guide)
                 .frame(minWidth: 960, minHeight: 640)
                 .task {
                     phone.onCapture = { [paper] id, jpeg in paper.read(jpeg: jpeg, captureID: id) }
                     paper.onHighlights = { [phone] id, boxes in phone.sendHighlights(boxes, for: id) }
-                    paper.onPage = { [researcher] document in researcher.pageRead(document) }
+                    paper.onPage = { [researcher, guide] document in
+                        researcher.pageRead(document)
+                        guide.pageRead(document)
+                    }
                     hands.onHands = { [voice] hands in voice.handsChanged(hands) }
                     money.isTakingCommand = { [voice] in voice.isBusy }
                     asker.onPointAt = { [phone] capture, box in phone.sendHighlights([box], for: capture) }
@@ -74,6 +83,18 @@ struct GraspMacApp: App {
                 Divider()
                 Button(lab.isRecording ? "Stop Lab Notes and Write Them Up" : "Start Lab Notes") { Task { await lab.toggle() } }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Start the Protocol") { guide.start() }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Next Step") { guide.next() }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                Button("Previous Step") { guide.back() }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                Button("Finish the Experiment") { Task { await guide.finish() } }
+                Divider()
+                Button("Map the Method") { Task { await researcher.mapMethod() } }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                Button("Find Related Work") { Task { await researcher.findRelatedWork() } }
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
                 Button("Compare My Cups with the Paper") { canvas.compareCupsWithPaper() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Rehearse a Lab Session") { Task { await lab.rehearse() } }
@@ -97,6 +118,11 @@ struct GraspMacApp: App {
                 Button("Show Cup Temperatures") { canvas.toggleTemperatures() }
             }
             CommandMenu("Money") {
+                Button("Write the Dispute") { Task { await disputer.write() } }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+                Button("Copy the Dispute Letter") { disputer.copy() }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                Divider()
                 Button("What to Say") { Task { await money.whatToSay() } }
                     .keyboardShortcut("j")
                 Button(money.conversation.isOn ? "Stop Listening to the Salesperson" : "Listen to the Salesperson…") {
@@ -136,7 +162,7 @@ struct GraspMacApp: App {
     }
 
     private func saveSnapshot(to url: URL) -> Bool {
-        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, isSnapshot: true)
+        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, guide: guide, isSnapshot: true)
         return CanvasSnapshot.save(view, size: canvas.canvasSize, to: url)
     }
 
@@ -171,6 +197,18 @@ struct GraspMacApp: App {
                         canvas.showSource(of: .passage(card: card.id, index: index))
                     }
                 case "lab": await lab.rehearse()
+                case "guide": guide.start()
+                case "method": await researcher.mapMethod()
+                case "related": await researcher.findRelatedWork()
+                case "dispute": await disputer.write()
+                case let step where step.hasPrefix("hoverwork"):
+                    // hoverwork2: the second paper on the related-work card.
+                    let index = (Int(step.dropFirst(9)) ?? 1) - 1
+                    if let card = canvas.cards.last(where: { if case .related = $0.kind { true } else { false } }) {
+                        canvas.showSource(of: .work(card: card.id, index: index))
+                    }
+                case "next": guide.next()
+                case "finish": _ = await guide.finish()
                 case "temps": if !canvas.showsTemperatures { canvas.toggleTemperatures() }
                 case "comparecups": canvas.compareCupsWithPaper()
                 case let step where step.hasPrefix("pour:"):

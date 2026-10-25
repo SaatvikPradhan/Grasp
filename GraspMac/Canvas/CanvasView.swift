@@ -11,6 +11,7 @@ struct CanvasView: View {
     let money: MoneyMode
     let asker: Asker
     let lab: LabSession
+    let guide: ProtocolGuide
     /// Rendering to a PNG: leaves out the camera preview and drop target, which can't be drawn offscreen.
     var isSnapshot = false
     @State private var popoverSize = CGSize(width: 400, height: 300)
@@ -23,6 +24,13 @@ struct CanvasView: View {
                 EmptyCanvasHint()
             }
 
+            ForEach(model.chipTrays) { tray in
+                ChipTrayView(tray: tray)
+                    .position(x: tray.frame.midX, y: tray.frame.midY)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+
             ForEach(model.cards) { card in
                 CardView(
                     card: card,
@@ -30,7 +38,8 @@ struct CanvasView: View {
                     isMergeCandidate: model.mergeCandidates.contains(card.id),
                     isTrashTarget: model.trashTarget == card.id,
                     isFocused: model.focusedID == card.id && model.cards.count > 1,
-                    probes: probes
+                    probes: probes,
+                    guide: guide
                 )
                     .position(card.center)
                     .animation(

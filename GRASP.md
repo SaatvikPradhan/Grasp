@@ -2,7 +2,7 @@
 
 > **Grab what you see and hear. Understand it with your hands.**
 >
-> **One thing: hand Grasp anything.** A lease, a phone bill, a loan, a credit card offer, a paper, the lab bench. It reads it, **every number shows where it came from** (hover it), you hold and twist the numbers with bare hands, and you can **ask it anything**: it answers out loud, pointing at the exact line. The car loan and the iodine clock are two rehearsed examples of the same engine, not two modes.
+> **One thing: hand Grasp anything.** A lease, a phone bill, a loan, a credit card offer, a paper, the lab bench. It reads it, **every number shows where it came from** (hover it), you hold and twist the numbers with bare hands, and you can **ask it anything**: it answers out loud, pointing at the exact line. The car loan and the cooling-cups experiment are two rehearsed examples of the same engine, not two modes.
 >
 > Demo hook: *"Judges, hand me anything with numbers on it."*
 
@@ -18,7 +18,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Stack** | One Xcode project: macOS app (brain, ~80% of code) + thin iOS app (camera) + shared Swift package `GraspKit`. Arduino or ESP32 for sensors. Gemini for all AI. ElevenLabs for voice. |
 | **Tracks entered** | Grand Prize, FNB, Research, Nittany AI, plus MLH side prizes |
 | **Estimated odds** | 94% at least one prize, 84% at least one cash prize (model estimates, see section 1) |
-| **Research demo** | Iodine clock reaction in 3 cups at 3 temperatures; camera times the color change; probes log temperatures; twist to fit activation energy (Arrhenius); notebook writes itself |
+| **Research demo** | Cooling cups (decided Oct 25: no chemicals, no organizer approval, no colour timing). Hand Grasp a paper on lids and cooling: it becomes a live model and catches a result its own equation contradicts. Grasp guides the protocol step by step while the probes confirm each pour. Push the model into the live chart: your cups' k against the paper's. The notebook writes itself; your notes get checked; related work says which next steps are open |
 | **Money demo** | Car salesperson says "$388 a month"; Grasp reads the contract, charts the true cost ($27,956), you twist to 48 months (save $2,204), push in a credit union quote (save $3,416), it says what to ask for, a printer prints "The Real Receipt" |
 | **Domain** | Top pick `aintreadingallthat.co`, or `touchgrasp.co` (check which extensions the GoDaddy Registry code covers) |
 | **Live pages** | Explainer: https://claude.ai/artifact/PThBpnPrBbxVm6BhNjpg1t · Build plan checklist: https://claude.ai/artifact/53z9ido8enZMBRCp5nrjj6 · Odds board: https://claude.ai/artifact/GQud6vrTmdpNLqQM2LcXcV |
@@ -33,7 +33,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 |---|---|---|---|---|
 | Grand Prize (top 3) | $2,000 / $1,000 / $500 | Undergrads | 30-second hands demo (car loan + twist) | 46% |
 | FNB | $1,500 | FNB staff | Money mode, car loan, Real Receipt | 44% |
-| Research | $1,500 | Research judges | Research mode, iodine clock + Arrhenius | 49% |
+| Research | $1,500 | Research judges | Paper → live model → guided run → your k against theirs | 49% |
 | Nittany AI (top 3) | $99 / $50 / $25 gift card per member | Nittany AI | Real AI use, helps students | 62% |
 | Mystery Stack | $1,500 | — | **Not entered** (requires a phone-motion group game for 4+) | — |
 | AI Strategy Case | $500 | — | **Not eligible** (no-code teams only) | — |
@@ -64,6 +64,11 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Does it add up?** | Every total, hours × rate and percentage on a page is re-checked in Swift; a wrong one shows as a red catch with the right number | `PageReading.relations`, `mismatches` |
 | **Your notes, checked** | Hand it a paper, then your notes: each note is linked to its passage and marked matches / differs / not in the paper, with research directions grounded in what the paper leaves open | `NoteLinker`, `Researcher`; ⌘⇧N or "these are my notes" |
 | **Lab notes** | While recording: camera frames, speech and probe readings. Stopping writes the notebook: each step with what was said and what its probe did then, how they connect, what to try next; ⌘⇧E saves it with Methods, CSV, transcript and frames | `SensorTrace`, `LabNotebookWriter`, `LabSession`; ⌘⇧R or "start lab notes" |
+| **Paper → live model** | A paper's equation and each condition's rate, traced to the page, run in Swift; twist k, swipe the condition; every reported result re-derived from the paper's own k; push into the cup chart to fit your cups' k with an error bar | `ModelReader`, `PaperModel`, `FittedRate`; ⌘⇧B compares your cups |
+| **Guided protocol** | Hand it a protocol and say "I'm starting the experiment": each step read aloud, the probes confirm pours, waits and drops, every step timed, anything done differently from the page noted, and the notebook gets the protocol table | `ProtocolReader`, `ProtocolRun`, `ProtocolGuide`; ⌘⇧G, "done", ⌘⏎ |
+| **Method map** | The Methods as a diagram: what was varied, measured, held the same and not controlled, how it was analysed, how many trials, each box tied to its sentence | `MethodReader`; ⌘⇧M or "map the method" |
+| **Related work** | Real OpenAlex papers closest to this one, and for each direction "studied", "partly" or "looks open", judged only against papers the search returned | `RelatedWorkFinder`, `OpenAlexClient`; ⌘⇧F or "has anyone done this?" |
+| **Write the dispute** | From a bill to a letter: each error with an amount Swift works out from numbers printed on the bill, a total to get back, charges worth asking about kept out of the total | `DisputeWriter`, `Disputer`; ⌘⇧W, ⌘⇧C copies it |
 
 **How it works (built Oct 24):** every page goes to three readers at once: `OfferReader` (car offers: drives the loan, compare and what-to-say cards), `PageReader` (any page: kind, summary, up to 12 facts and 5 catches with exact quotes, and a model whose inputs Swift checks are really on the page), and Vision (where each line is). `SourceLocator` matches each quote to its line, so every fact, catch and answer source has a box on the photo. Computed numbers (totals, payments) hover as their formula, each input traced to its words on the page. Answers use Swift calculator tools (`loan_payment`, `payoff_months`, `total_cost`, `arithmetic`) and are marked unchecked if any number can't be traced. The canvas starts empty ("Hand Grasp anything"); ⌘R lays out the demo cards.
 
@@ -71,6 +76,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 - **Arithmetic check.** A second Gemini pass, run in parallel, lists only the page's arithmetic. Each input is labelled with its line, and Swift rereads the number from that line if the model "fixed" it. Numbers count only if they are facts or on a line Vision read. A total listed twice is trusted if either listing adds up.
 - **Test results.** On the five test documents, all six planted arithmetic mistakes were caught in 3 of 3 runs, with no false alarms on the four correct pages.
 - **Follow-ups.** Ask keeps the last four exchanges and thinks at "low". An answer containing a number that can't be traced goes back once to be done with a tool. Follow-up chains on the five documents: 59 of 60 answers right.
+- **Oct 25:** the research side became one loop on cooling cups: live model, cup comparison, guided protocol, method map, related work; and the money side gained the dispute letter. The simulated bench pours, lids and ices cups (Bench menu), so all of it rehearses without hardware. One card sits beside the page in focus; the rest fold into chips. The bench hardware (kit choice, wiring, firmware, Mac serial reader) is in the hardware guide: https://claude.ai/artifact/HmbjbSeNhPi5QqThP99vkF
 - **Focus.** The card last scanned, grabbed or clicked is in focus. Other pages fold into chips on the left, showing how many mistakes and catches each has. Answers and notes dock beside the card in focus. Ask, Delete and voice commands go to the card in focus.
 
 ### The loop (every feature runs through it)
@@ -98,7 +104,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 Tags: **[Demo]** build for the demo · **[If time]** · **[Next]** pitch as future.
 
 ### Research mode
-Built (Oct 24), through the same engine: **notes against a paper** (each note linked to the exact passage, marked matches / differs / not in the paper, numbers checked in Swift, up to 3 directions each grounded in a quote the paper leaves open), and **lab notes** (frames from the phone or Mac camera every 4 s, on-device speech with timed lines, probe readings once a second; Swift finds jumps and cooling-pace changes; Gemini writes steps, observations and next steps; quotes must be in the transcript and readings come from the probes). Research menu: ⌘⇧N check my notes, ⌘⇧R start/stop lab notes, Rehearse a Lab Session (scripted, simulated probes), ⌘⇧E save the notebook. Arrhenius fitting and color timing are next.
+Built (Oct 24), through the same engine: **notes against a paper** (each note linked to the exact passage, marked matches / differs / not in the paper, numbers checked in Swift, up to 3 directions each grounded in a quote the paper leaves open), and **lab notes** (frames from the phone or Mac camera every 4 s, on-device speech with timed lines, probe readings once a second; Swift finds jumps and cooling-pace changes; Gemini writes steps, observations and next steps; quotes must be in the transcript and readings come from the probes). Research menu: ⌘⇧N check my notes, ⌘⇧R start/stop lab notes, Rehearse a Lab Session (scripted, simulated probes), ⌘⇧E save the notebook. Built Oct 25: paper → live model and cup comparison (⌘⇧B), guided protocol (⌘⇧G, ⌘⏎ next step), method map (⌘⇧M), related work from OpenAlex (⌘⇧F). Arrhenius stays an option if there's time; colour timing is dropped with the iodine clock.
 
 - **[Demo] Live sensor charts.** Any Arduino sensor; readings chart themselves once a second.
 - **[Demo] Protocol watcher.** Load steps; the overhead camera checks each one; marks skipped or late steps on the chart.
@@ -114,7 +120,7 @@ Built (Oct 24), through the same engine: **notes against a paper** (each note li
 - **[Next] Replay.** Scrub the timeline: bench photo and data at the same moment. (Build if time; strong for research judges.)
 
 ### Money mode
-Built (Oct 24): offer reader, add-ons merged across contract and sticker, true-cost chart, twist, compare, hears the pitch (consent prompt, `PitchChecker`), what to say (Gemini wording checked against Swift's numbers, read aloud by ElevenLabs), decision summary PDF (⌘E). Money menu: ⌘J what to say, ⌘⇧L listen to the salesperson.
+Built (Oct 24): offer reader, add-ons merged across contract and sticker, true-cost chart, twist, compare, hears the pitch (consent prompt, `PitchChecker`), what to say (Gemini wording checked against Swift's numbers, read aloud by ElevenLabs), decision summary PDF (⌘E). Money menu: ⌘J what to say, ⌘⇧L listen to the salesperson. Oct 25: **write the dispute** (⌘⇧W): on the sample phone bill, $42.00 to get back ($10 total that doesn't add up, $25 promo not applied, $7 late fee on an on-time payment), with the protection plan and recovery fee asked about but kept out of the total.
 
 - **[Demo] Offer reader.** Car loans, leases, credit card offers, BNPL, aid letters: rate, term, fees, penalties.
 - **[Demo] Add-on fee spotter.** Paint protection, nitrogen tires, large doc fees.
@@ -167,14 +173,15 @@ FNB asks how to help people at the moments that matter most: information → und
 Props: toy car or cardboard door with printed window sticker + dealer add-on sticker ("Nitrogen tires $299, Paint protection $895"), printed contract (2 copies), credit union quote card ("Pre-approved 6.4%"), teammate as salesperson, LED strip, receipt printer.
 
 ### Research: 3 minutes (research judges)
-The Research track asks for a tool that removes a bottleneck. Grasp removes several: stopwatch timing, hand notes, hand plotting, digitizing a textbook figure, re-coding its model, writing the Methods.
-1. **0:00 Setup.** 3 cups on the printed mat: **A warm (~40 °C), B room, C cold**, probe in each. Live temperatures on the canvas. "Grasp, start the clock reaction."
-2. **0:15 Pour.** Grasp logs each pour time automatically (the hard part to do by hand).
-3. **0:20–1:30 The snaps.** Cups turn dark blue one after another: A first (~20 s), B (~45 s), C (~90 s). Each snap: marker, "Cup A turned at 0:36 at 38.2 °C", LED strip flashes.
-4. **1:40 The law.** Hold up the Arrhenius equation. Grasp plots ln(1/t) vs 1/T. Twist to set Ea, or say "fit it". Report Ea in kJ/mol with an error bar. Push against the textbook value to compare.
-5. **2:40 Write it up.** Say "export." Notebook with protocol log, temperatures, times, plot, Ea, Methods paragraph, Jupyter file. Judges scan a QR to open it.
+The Research track asks for a tool that removes a bottleneck. Grasp removes several: re-deriving a paper's numbers, reproducing its result, hand notes, a stopwatch, writing the Methods, and checking whether an idea is new.
+1. **0:00 The paper.** Hand Grasp the paper on lids and cooling. It becomes a live model beside the page and flags the result that doesn't follow from its own equation: "Ceramic, lid: the table says 25.9 min, its k gives 33.6." Hover the red dot for the cell in the table.
+2. **0:30 Play with it.** Twist k; swipe from "no lid" to "lid". ⌘⇧M maps the method: what was varied, held the same, and not controlled (evaporation, fill volume).
+3. **0:50 Run it.** Hand it the protocol and say "I'm starting the experiment." Grasp reads each step aloud. Pour into A, B (lid on) and C: the probes confirm each pour and the step ticks off with its time.
+4. **1:40 Your cups against the paper.** Push the model into the live cup chart. "Cup B: k 0.019 ± 0.002, closest Paper, lid (0.019): consistent." Reproducing a result, live.
+5. **2:10 Write it up.** Ice into C, finish the protocol: the notebook writes itself with the protocol table, what was said, and what each probe did. Hand Grasp a page of notes on the paper: 4 of 8 differ from it.
+6. **2:40 What's next.** "Has anyone done this?" Real papers from OpenAlex; "measuring evaporation: looks open". Judges scan a QR to open the notebook.
 
-**Backup experiment** (no chemicals allowed / pharmacy closed): **ice and salt**, 3 cups of ice water: A plain (~0 °C), B + salt (drops below zero within a minute), C + same amount of sugar (barely drops). Model: freezing-point depression ΔT = i·K_f·m (K_f water = 1.86 °C·kg/mol; i ≈ 2 for NaCl, 1 for sugar). Twist to set salt concentration until the model matches.
+**Backup experiment:** the same flow with ice and salt (freezing-point depression), or the scripted rehearsal session if hot water isn't allowed at the table.
 
 ---
 
@@ -187,7 +194,7 @@ Grasp/
 ├─ Config/                Base.xcconfig, Secrets.xcconfig (git-ignored keys), Info.plists
 ├─ GraspKit/              Swift package shared by both apps
 │  ├─ Models/             Reading, LabEvent, LoanTerms, ChartSpec, CupState, Session
-│  ├─ Math/               LoanMath, OneEuroFilter, LeastSquares, Arrhenius, FreezingPoint
+│  ├─ Math/               LoanMath, OneEuroFilter, NewtonCooling (FittedRate and PaperModel in Models/)
 │  ├─ Gestures/           HandSample, GestureEngine (pure logic, unit tested; reusable on the iPhone fallback)
 │  ├─ Hardware/           ProbeProtocol (serial lines ↔ messages), SimulatedBench
 │  ├─ AI/                 APIKeys, GeminiClient (+ JSON schemas), Prompts
@@ -263,7 +270,12 @@ Window sticker add-ons: nitrogen tires $299 + paint protection $895 = **$1,194**
 
 Rate check (if time): FRED has commercial-bank new-car loan rate series (e.g. `TERMCBAUTO48NS`); verify the series ID on fred.stlouisfed.org.
 
-### Arrhenius (research demo)
+### Newton's law of cooling (research demo)
+- `T(t) = T_room + (T_0 − T_room)·e^(−kt)`; time to reach a temperature X is `ln((T_0 − T_room)/(X − T_room))/k`.
+- The sample paper (`props/research-paper.html`): 90 °C start, 21 °C room; k = 0.031 per min open gives 18.4 min to 60 °C, 0.019 with a lid gives 30.0. Its "Ceramic, lid" row is the planted mistake (k = 0.017 gives 33.6, not 25.9).
+- Your cups: ln(T − T_room) against time is a straight line of slope −k; least squares gives k and its standard error (`FittedRate`). Consistent when within two combined standard errors of the paper's k ± its printed spread.
+
+### Arrhenius (optional extra model)
 - Rate is proportional to 1/t (t = seconds until the cup turns blue).
 - `ln(1/t) = ln A − (Ea/R)·(1/T)`, T in kelvin, R = 8.314 J/(mol·K).
 - Linear least squares on (1/T, ln(1/t)); `Ea = −slope × R`; report ± from the slope's standard error. Three points give a rough value; say so.
@@ -298,22 +310,11 @@ Rate check (if time): FRED has commercial-bank new-car loan rate series (e.g. `T
 - **WS2812:** data pin through 330 Ω; 5 V and GND; ≤16 LEDs at low brightness (≤40/255) to stay on USB power. Library: `Adafruit_NeoPixel`.
 - **Thermal printer:** TTL serial at 19200 baud; ESP32 `Serial2` (e.g. GPIO16/17), Uno `SoftwareSerial`; separate 5 V 2 A supply; **common ground** with the board. Library: `Adafruit_Thermal`.
 
-### Pharmacy run (iodine clock)
-Vitamin C tablets 1000 mg · Iodine tincture 2% · Hydrogen peroxide 3% · Liquid laundry starch (or cornstarch) · Oral medicine syringes 5–10 mL ×4 · Nitrile gloves.
-
-### Food area / store
-9 small clear cups · tray · paper towels · spoon · ice · hot water · salt packets (backup) · tape and marker (label A, B, C).
+### Bench supplies (cooling cups)
+Three 350 mL paper cups and one plastic lid · kettle or hot water from the food area (about 90 °C) · ice · tray · paper towels · tape and marker (label A, B, C). Probes: 3 waterproof DS18B20 from the MLH table, or the kit thermistors (two cups); see the hardware guide.
 
 ### To print
-Cup mat (circles A, B, C + **white and blue reference squares**) · Arrhenius equation card + a textbook Ea value · car contract ×2 (`props/contract.html`, open in a browser and print) · window sticker + dealer add-on sticker · credit union quote card · toy car or cardboard car door.
-
-### Iodine clock: starting recipe (tune by rehearsal)
-- **Stock:** crush one 1000 mg vitamin C tablet into 60 mL warm water.
-- **Solution A (per cup):** 5 mL stock + 60 mL water + 5 mL 2% iodine → turns clear.
-- **Solution B (per cup):** 60 mL water + 15 mL 3% hydrogen peroxide + 2.5 mL liquid starch.
-- Pour B into A, swirl. After a delay it snaps dark blue. Warmer = faster: set temperatures with warm and ice water baths for both solutions.
-- Adjust volumes until A ≈ 20 s, B ≈ 45 s, C ≈ 90 s. Use syringes for repeatable volumes.
-- **Safety:** gloves, tray, nothing near the laptop, no drinking, iodine stains, rinse down the sink with lots of water. **Ask organizers first.** If not allowed, use the ice and salt backup.
+`props/research-paper.html` (the paper) · `props/paper-notes.html` (the notes) · `props/protocol.html` (the protocol) · car contract ×2 (`props/contract.html`) · window sticker + dealer add-on sticker · credit union quote card · phone bill (`props/phone-bill.html`, for the dispute) · toy car or cardboard car door.
 
 ---
 
@@ -335,7 +336,7 @@ Hours count from when you start. Live checklist with clock times: https://claude
 - **3:00–8:00 Shared loop** — canvas with spring-motion chart cards + 4 cursor states · gestures with smoothing · voice → command → chart via Gemini function calls · phone scanner with highlights from the Mac · **fling to send** (flick the phone, the scan flies onto the canvas)
 - **8:00–12:00 Money mode** — contract → loan model in Swift · add-on flags (contract + window sticker) · true-cost chart, twist the term, push in credit union quote · spoken-number check · "what to say" with ElevenLabs · one-page summary
 - **12:00–13:00 Rehearse FNB** — full 90 s FNB script with props; 30 s Grand opener
-- **13:00–18:00 Research mode** — firmware (3 probes out, LED commands in) · Mac serial reader → live charts · cup mat + color timing · action log with thumbnails + markers · Arrhenius plot, twist/fit, error bars, textbook compare · export (notebook, CSV, .ipynb, Methods) · tune iodine clock to ~20 / 45 / 90 s
+- **13:00–18:00 Research mode** — firmware (3 probes out, LED commands in) · Mac serial reader → live charts · paper → live model + cup comparison · guided protocol · lab notebook with Methods and export · method map · related work · rehearse the cooling-cups run with real hot water
 - **18:00–21:00 Wow layer (in this order)** — LED cup flashes + money meter · receipt printer · replay scrubber · pressure-alert buzz · QR share links on your domain
 - **21:00–24:00 Freeze, rehearse, submit** — feature freeze · demo-mode hotkeys that load the last good run of each act (labeled as replay) · rehearse each script 10× · backup video of every demo · Devpost (tagline, video < 2 min, screenshots, all four tracks + MLH categories) · practice 3 pitches · pack and charge everything
 
@@ -358,8 +359,8 @@ Hours count from when you start. Live checklist with clock times: https://claude
 | Gemini slow | Fast model, small frames, short "reading" animation, cache results for demo props |
 | Hand tracking jitter | Smoothing, higher pinch threshold, no bright window behind you |
 | Hall noise breaks voice | AirPods mic + push-to-talk key |
-| Chemicals not allowed | Ice and salt version, same probes and flow |
-| Color readings drift | Reference squares on the mat, phone fixed, same lighting |
+| Hot water not allowed at the table | Ice and salt version, same probes and flow; or the simulated bench (Bench menu) with the same steps |
+| Cooling is slow to watch | k fits from about 20 s of cooling; the guided run's "wait below 85 °C" step takes about 1.5 min from a fresh pour |
 | No receipt printer | Receipt as a page + QR |
 | A live act fails on stage | Demo-mode hotkey loads the last good run, labeled as a replay |
 | Recording consent (Pennsylvania requires everyone's consent) | Money mode listens only with consent, or works from documents and your own voice |

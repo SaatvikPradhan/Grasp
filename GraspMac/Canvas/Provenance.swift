@@ -18,6 +18,8 @@ enum HoverTarget: Hashable {
     case labStep(card: UUID, index: Int)
     /// Words on a page that a card cites (a paper's equation, a protocol step, a bill line).
     case cited(card: UUID, index: Int)
+    /// A published paper on a related-work card.
+    case work(card: UUID, index: Int)
 }
 
 /// Words on a page a card cites, with what they back up.

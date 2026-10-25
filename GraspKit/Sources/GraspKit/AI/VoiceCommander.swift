@@ -26,6 +26,22 @@ public enum VoiceCommand: Equatable, Sendable {
     case labNotes(Bool)
     /// Save the lab notebook with its data and Methods.
     case saveNotebook
+    /// "I'm starting the experiment": follow the protocol on the canvas, step by step.
+    case startExperiment
+    /// During a guided run: "done" or "next", "go back", "say that again".
+    case protocolStep(StepMove)
+    /// "We're done", "stop the experiment": stop and write the notebook.
+    case finishExperiment
+    /// "Map the method": the paper's method as a diagram.
+    case mapMethod
+    /// "Find related work", "has anyone done this?"
+    case findRelatedWork
+    /// "Write a dispute", "help me get my money back".
+    case writeDispute
+
+    public enum StepMove: String, Sendable {
+        case next, back, again
+    }
     /// A request for something not built yet (fit, export, explain), by name.
     case comingSoon(String)
     /// Speech that wasn't meant for Grasp: a salesperson talking, small talk, noise.
@@ -74,6 +90,12 @@ public struct VoiceCommander: Sendable {
         case "clear_canvas": return .clearCanvas
         case "check_notes": return .checkNotes
         case "lab_notes": return .labNotes(call.flag("on") ?? true)
+        case "start_experiment": return .startExperiment
+        case "protocol_step": return .protocolStep(VoiceCommand.StepMove(rawValue: call.text("move") ?? "next") ?? .next)
+        case "finish_experiment": return .finishExperiment
+        case "map_method": return .mapMethod
+        case "find_related_work": return .findRelatedWork
+        case "write_dispute": return .writeDispute
         case "fit_model": return .comingSoon("fit it")
         case "export_notebook": return .saveNotebook
         case "explain": return .comingSoon("explain")
@@ -98,6 +120,13 @@ public struct VoiceCommander: Sendable {
         function("make_summary", "Make the one-page decision summary to print or share."),
         function("fit_model", "Fit the model to the measured data, for example 'fit it'."),
         function("export_notebook", "Export or save the lab notebook, data and methods."),
+        function("start_experiment", "The user is starting the experiment or wants to be guided through the protocol, for example 'I'm starting the experiment', 'let's begin', 'guide me through it'."),
+        function("protocol_step", "During a guided experiment: the user finished a step or wants to move, for example 'done', 'next', 'okay poured', 'go back', 'say that again', 'repeat'.",
+                 ["move": ["type": "STRING", "enum": ["next", "back", "again"], "description": "next when a step is done, back to go back, again to repeat it"]]),
+        function("write_dispute", "Write a letter disputing the wrong charges on a bill, for example 'write a dispute', 'help me get my money back', 'complain about this bill'."),
+        function("find_related_work", "Find papers related to this one, or check whether anyone has already studied a direction, for example 'has anyone done this?'."),
+        function("map_method", "Show how the paper's study was done: its method, variables, controls and what it didn't control."),
+        function("finish_experiment", "Stop the experiment and write up the notes, for example 'we're done', 'stop the experiment', 'finish'."),
         function("lab_notes", "Start or stop taking lab notes of the experiment, for example 'start recording', 'take notes on this', 'stop recording'.",
                  ["on": ["type": "BOOLEAN", "description": "True to start, false to stop and write them up"]]),
         function("explain", "Explain what the chart means."),

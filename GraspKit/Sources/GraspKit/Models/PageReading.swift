@@ -346,10 +346,14 @@ extension PageReading {
         let outcomes = (relations ?? []).map { (relation: $0, outcome: check($0)) }
         // The same total can be listed twice (two looks at the page). If any listing of it adds
         // up, trust that one: a missed mistake is better than a false alarm.
+        // Only a listing of the same lines counts: "Total due = balance − payment + new charges" can add up
+        // while "New charges = the lines above" doesn't, though both come to the same number.
         func holds(_ relation: Relation) -> Bool {
             outcomes.contains { item in
-                if case .holds = item.outcome { return item.relation.kind == relation.kind && abs(item.relation.stated - relation.stated) < 0.006 }
-                return false
+                guard case .holds = item.outcome, item.relation.kind == relation.kind,
+                      abs(item.relation.stated - relation.stated) < 0.006 else { return false }
+                let shared = item.relation.values.filter { value in relation.values.contains { abs($0 - value) < 0.006 } }.count
+                return shared * 2 >= min(item.relation.values.count, relation.values.count)
             }
         }
         var seen: Set<String> = []
@@ -375,7 +379,10 @@ extension PageReading {
             guard values.count >= 2 else { return .unchecked }
             expected = values.reduce(0, +)
         case .product:
-            guard values.count == 2 else { return .unchecked }
+            // "36 months at 0% APR" isn't a product: a zero or a percentage among the inputs means the
+            // reader paired the wrong numbers, so there's nothing to check.
+            guard values.count == 2, !values.contains(0),
+                  !relation.inputs.contains(where: { $0.label.contains("%") }) else { return .unchecked }
             expected = values[0] * values[1]
         case .percentOf:
             guard values.count == 2 else { return .unchecked }
