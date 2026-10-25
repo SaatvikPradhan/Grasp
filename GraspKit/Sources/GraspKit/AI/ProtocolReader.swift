@@ -68,10 +68,10 @@ public struct ProtocolReader: Sendable {
     static func prompt(_ lines: [String]) -> String {
         """
         This page is a lab protocol, read line by line. Turn its procedure into steps Grasp can guide someone \
-        through at a bench with three cups, A, B and C, each with a temperature probe.
+        through at a bench of cups labelled A, B and C (two or three of them), each with a temperature probe.
         title: the protocol's name. steps: each step of the procedure, in order. instruction is the step in a \
         few plain words, said aloud to the person doing it. quote is the step copied exactly from the page.
-        check is how Grasp will know the step is done: rises if hot liquid is poured into a cup (that cup's probe \
+        check is how Grasp will know the step is done: rises if hot or warm water is poured into a cup (that cup's probe \
         jumps up), drops if ice or something cold goes in (it jumps down), below or above if the step waits for a \
         cup to pass a temperature (celsius as printed), wait if it says to wait a length of time (seconds), \
         otherwise say_done. cup is the cup the check watches.

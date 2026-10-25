@@ -98,7 +98,8 @@ struct GuideCardView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Image(systemName: icon(step.check))
+                    // A cup with no probe on this bench: the camera or your word moves it on.
+                    Image(systemName: ProtocolRun.cup(of: step.check).map { celsius[$0] == nil } == true ? "eye" : icon(step.check))
                         .foregroundStyle(Theme.hot)
                     Text(waiting.text)
                         .font(.system(size: 13, weight: .medium))

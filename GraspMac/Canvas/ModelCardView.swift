@@ -41,86 +41,164 @@ struct ModelCardView: View {
                     .hoverSource(.cited(card: cardID, index: 0))
             }
 
-            chart
-                .frame(height: card.comparesCups ? 210 : 220)
+            charts
+                .frame(height: card.comparesCups ? 214 : 220)
 
             conditionChips
             selectedLine
             if card.comparesCups { cups } else { ownMath }
             Spacer(minLength: 0)
-            Text(card.comparesCups ? "Dashed: what the paper predicts for that cup · solid: what it did"
+            Text(card.comparesCups ? "Left: the paper's figure · right: your cups (solid) against the paper's ideal (dashed)"
                                    : "Twist for k · swipe for the next condition · push into the cup chart to compare")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.muted)
         }
     }
 
-    // MARK: Chart
+    // MARK: Charts
 
-    private var chart: some View {
-        Chart {
-            if card.comparesCups {
-                ForEach(benchCups, id: \.cup) { bench in
-                    ForEach(bench.points, id: \.time) { point in
-                        LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Cup", "cup \(bench.cup.rawValue)"))
-                            .foregroundStyle(color(bench.cup))
+    /// Side by side when comparing: the paper's own figure, and your cups against it.
+    @ViewBuilder
+    private var charts: some View {
+        if card.comparesCups {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    chartLabel("THE PAPER", "from \(PaperModelText.number(paperStart)) °C")
+                    paperChart
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    chartLabel("YOUR CUPS", benchCups.isEmpty ? "live, last 2 min" : "dashed: the paper's ideal")
+                    cupsChart
+                }
+            }
+        } else {
+            paperChart
+        }
+    }
+
+    private func chartLabel(_ title: String, _ detail: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(Theme.ink)
+            Text(detail)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.muted)
+                .lineLimit(1)
+        }
+    }
+
+    /// The paper's own figure: every condition's curve, the selected one bold, and its reported
+    /// results (red where its own equation disagrees).
+    private var paperChart: some View {
+        styled(Chart {
+            ForEach(Array(model.conditions.enumerated()), id: \.offset) { index, condition in
+                let selected = index == card.selected
+                ForEach(curve(k: selected ? card.k : condition.k.value), id: \.time) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Condition", condition.name))
+                        .foregroundStyle(selected ? Theme.accent : Theme.muted.opacity(0.45))
+                        .lineStyle(StrokeStyle(lineWidth: selected ? 3 : 1))
+                }
+            }
+            if card.twistedK != nil {
+                ForEach(curve(k: card.condition.k.value), id: \.time) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Condition", "paper's k"))
+                        .foregroundStyle(Theme.accent.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                }
+            }
+            ForEach(Array(model.checks.enumerated()), id: \.offset) { _, check in
+                if check.reported.kind == .timeTo {
+                    PointMark(x: .value("Time", check.reported.value.value), y: .value("°C", check.reported.at))
+                        .foregroundStyle(check.matches ? Theme.ink : Theme.warn)
+                        .symbolSize(check.matches ? 30 : 70)
+                    if !check.matches {
+                        PointMark(x: .value("Time", check.expected), y: .value("°C", check.reported.at))
+                            .foregroundStyle(Theme.warn.opacity(0.5))
+                            .symbol(.circle)
+                            .symbolSize(70)
+                    }
+                }
+            }
+        }, span: timeSpan)
+    }
+
+    /// Your cups: each one's readings since the pour (solid) against the paper's ideal from the same
+    /// start in the same room (dashed). Before a pour, the live readings of the last two minutes.
+    private var cupsChart: some View {
+        let bench = benchCups
+        let live = bench.isEmpty ? liveCups : []
+        let span = bench.isEmpty ? 2 : max((bench.compactMap { $0.points.last?.time }.max() ?? 0) * 1.4, 3)
+        // At least 8 °C tall, so a steady cup reads as steady rather than as its sensor noise.
+        let values = live.flatMap { $0.points.map(\.celsius) } + bench.flatMap { ($0.points + $0.prediction).map(\.celsius) }
+        let low = values.min() ?? 20, high = values.max() ?? 30
+        let middle = (low + high) / 2, half = max((high - low) / 2 + 1, 4)
+        return styled(Chart {
+            if bench.isEmpty {
+                ForEach(live, id: \.cup) { live in
+                    ForEach(live.points, id: \.time) { point in
+                        LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Cup", "live \(live.cup.rawValue)"))
+                            .foregroundStyle(color(live.cup))
                             .lineStyle(StrokeStyle(lineWidth: 2.5))
                     }
-                    ForEach(bench.prediction, id: \.time) { point in
-                        LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Cup", "paper \(bench.cup.rawValue)"))
-                            .foregroundStyle(color(bench.cup).opacity(0.7))
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                    }
                 }
-            } else {
-                ForEach(Array(model.conditions.enumerated()), id: \.offset) { index, condition in
-                    let selected = index == card.selected
-                    ForEach(curve(k: selected ? card.k : condition.k.value), id: \.time) { point in
-                        LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Condition", condition.name))
-                            .foregroundStyle(selected ? Theme.accent : Theme.muted.opacity(0.45))
-                            .lineStyle(StrokeStyle(lineWidth: selected ? 3 : 1))
-                    }
+            }
+            ForEach(bench, id: \.cup) { cup in
+                ForEach(cup.points, id: \.time) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Cup", "cup \(cup.cup.rawValue)"))
+                        .foregroundStyle(color(cup.cup))
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
                 }
-                if card.twistedK != nil {
-                    ForEach(curve(k: card.condition.k.value), id: \.time) { point in
-                        LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Condition", "paper's k"))
-                            .foregroundStyle(Theme.accent.opacity(0.6))
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                    }
+                ForEach(cup.prediction, id: \.time) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("°C", point.celsius), series: .value("Cup", "paper \(cup.cup.rawValue)"))
+                        .foregroundStyle(color(cup.cup).opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
                 }
-                ForEach(Array(model.checks.enumerated()), id: \.offset) { _, check in
-                    if check.reported.kind == .timeTo {
-                        PointMark(x: .value("Time", check.reported.value.value), y: .value("°C", check.reported.at))
-                            .foregroundStyle(check.matches ? Theme.ink : Theme.warn)
-                            .symbolSize(check.matches ? 30 : 70)
-                        if !check.matches {
-                            PointMark(x: .value("Time", check.expected), y: .value("°C", check.reported.at))
-                                .foregroundStyle(Theme.warn.opacity(0.5))
-                                .symbol(.circle)
-                                .symbolSize(70)
-                        }
+            }
+        }, span: span, celsius: (middle - half)...(middle + half))
+    }
+
+    /// Each cup's readings over the last two minutes, in minutes from the window's start.
+    private var liveCups: [(cup: Cup, points: [Point])] {
+        let now = probes.now
+        return Cup.allCases.compactMap { cup in
+            let recent = (probes.history[cup] ?? []).filter { now - $0.time <= 120 }
+            guard let first = recent.first, !probes.isStale(cup) else { return nil }
+            let stride = max(1, recent.count / 60)
+            let points = recent.enumerated().filter { $0.offset % stride == 0 }
+                .map { Point(time: ($0.element.time - (now - 120)) / unitSeconds, celsius: $0.element.celsius) }
+            return first.celsius.isFinite ? (cup, points) : nil
+        }
+    }
+
+    /// Axes shared by both charts, in the paper's time unit.
+    @ViewBuilder
+    private func styled(_ chart: some View, span: Double, celsius: ClosedRange<Double>? = nil) -> some View {
+        if let celsius {
+            axes(chart.chartXScale(domain: 0...span).chartYScale(domain: celsius))
+        } else {
+            axes(chart.chartXScale(domain: 0...span).chartYScale(domain: .automatic(includesZero: false)))
+        }
+    }
+
+    private func axes(_ chart: some View) -> some View {
+        chart
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisGridLine().foregroundStyle(Theme.line)
+                    AxisValueLabel {
+                        if let time = value.as(Double.self) { Text("\(PaperModelText.number(time)) \(model.timeUnit)") }
                     }
                 }
             }
-        }
-        .chartXScale(domain: 0...timeSpan)
-        .chartYScale(domain: .automatic(includesZero: false))
-        .chartXAxis {
-            AxisMarks { value in
-                AxisGridLine().foregroundStyle(Theme.line)
-                AxisValueLabel {
-                    if let time = value.as(Double.self) { Text("\(PaperModelText.number(time)) \(model.timeUnit)") }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine().foregroundStyle(Theme.line)
+                    AxisValueLabel {
+                        if let celsius = value.as(Double.self) { Text("\(Int(celsius))°") }
+                    }
                 }
             }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine().foregroundStyle(Theme.line)
-                AxisValueLabel {
-                    if let celsius = value.as(Double.self) { Text("\(Int(celsius))°") }
-                }
-            }
-        }
     }
 
     private struct Point {
@@ -128,20 +206,19 @@ struct ModelCardView: View {
         var celsius: Double
     }
 
+    /// Where the paper's curves start.
+    private var paperStart: Double { model.start.value }
+
     private var timeSpan: Double {
-        if card.comparesCups {
-            let longest = benchCups.map { $0.points.last?.time ?? 0 }.max() ?? 0
-            return max(longest * 1.4, 3)
-        }
         let reported = model.checks.flatMap { [$0.reported.value.value, $0.expected] }.max() ?? 0
         return max(reported * 1.15, 10)
     }
 
-    private func curve(k: Double, from start: Double? = nil, span: Double? = nil) -> [Point] {
+    private func curve(k: Double, from start: Double? = nil, span: Double? = nil, room: Double? = nil) -> [Point] {
         let span = span ?? timeSpan
         return (0...48).map { step in
             let time = span * Double(step) / 48
-            let room = model.room?.value ?? 0
+            let room = room ?? model.room?.value ?? 0
             let celsius = start.map { room + ($0 - room) * exp(-k * time) } ?? model.value(after: time, k: k)
             return Point(time: time, celsius: celsius)
         }
@@ -224,9 +301,16 @@ struct ModelCardView: View {
         var nearest: PaperModel.Condition?
     }
 
-    /// Each cup that's been poured: its cooling since the pour, and the paper's prediction from the same start.
+    /// The room the cups cool toward: the bench's own sensor when it has one, else the paper's room.
+    private var benchRoom: (celsius: Double, measured: Bool) {
+        if let room = probes.room { return (room, true) }
+        return (model.room?.value ?? 21, false)
+    }
+
+    /// Each cup that's been poured: its cooling since the pour, and the paper's prediction from the
+    /// same start in the same room, which is how it should ideally look.
     private var benchCups: [BenchCup] {
-        let room = model.room?.value ?? 21
+        let room = benchRoom.celsius
         return Cup.allCases.compactMap { cup in
             let segment = FittedRate.segment(probes.history[cup] ?? [])
             guard let first = segment.first, first.celsius > room + 10 else { return nil }
@@ -238,7 +322,7 @@ struct ModelCardView: View {
             let perUnit = fit.map { $0.k * unitSeconds / 60 }
             let nearest = perUnit.flatMap { k in model.conditions.min { abs($0.k.value - k) < abs($1.k.value - k) } }
             let span = max((points.last?.time ?? 0) * 1.4, 3)
-            let prediction = nearest.map { curve(k: $0.k.value, from: first.celsius, span: span) } ?? []
+            let prediction = nearest.map { curve(k: $0.k.value, from: first.celsius, span: span, room: room) } ?? []
             return BenchCup(cup: cup, points: points, prediction: prediction, fit: fit, nearest: nearest)
         }
     }
@@ -246,9 +330,15 @@ struct ModelCardView: View {
     private var cups: some View {
         let bench = benchCups
         return VStack(alignment: .leading, spacing: 4) {
-            Text("YOUR CUPS AGAINST THE PAPER")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Theme.accent)
+            HStack(spacing: 8) {
+                Text("YOUR CUPS AGAINST THE PAPER")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.accent)
+                Text(benchRoom.measured ? "room \(String(format: "%.1f", benchRoom.celsius)) °C, measured at the bench"
+                                        : "room \(PaperModelText.number(benchRoom.celsius)) °C, the paper's")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.muted)
+            }
             if bench.isEmpty {
                 Text("Pour hot water into a cup and Grasp fits its k as it cools.")
                     .font(.system(size: 12))

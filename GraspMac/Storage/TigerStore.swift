@@ -31,6 +31,8 @@ final class TigerStore {
 
     /// Connects, makes the tables, and starts saving readings.
     func start() async {
+        // Snapshot runs are checks: they don't write test pages and simulated readings into your data.
+        guard ProcessInfo.processInfo.environment["GRASP_SNAPSHOT"] == nil else { return }
         guard connection == nil, let address = APIKeys.tigerService else { return }
         status = .connecting
         let connection = PostgresConnection(address)

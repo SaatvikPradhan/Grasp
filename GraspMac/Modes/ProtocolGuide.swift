@@ -134,6 +134,8 @@ final class ProtocolGuide {
         watcher?.cancel()
         watcher = nil
         seeing = nil
+        // The screen's second line goes back to the bench (the room, or a cup below 37 °C).
+        probes.send(ProbeProtocol.lcd(nil))
         let record = ProtocolRecord(run)
         lastRun = run
         self.run = nil
@@ -212,12 +214,14 @@ final class ProtocolGuide {
     private func announce() {
         guard let run, let step = run.step else { return }
         Task { await voiceOut.say("Step \(step.number) of \(run.lab.steps.count). \(step.instruction)") }
+        // The bench screen's second line, readable from the cups.
+        probes.send(ProbeProtocol.lcd("Step \(step.number) of \(run.lab.steps.count)"))
     }
 
     /// Does a step's action to the simulated bench. False on real probes: real hands do it.
     private func act(_ action: LabProtocol.Step.Action) -> Bool {
         switch action {
-        case .pour(let cup): probes.simulate(.pour(cup, celsius: 88))
+        case .pour(let cup): probes.simulate(.pour(cup, celsius: SimulatedBench.pourCelsius))
         case .lid(let cup): probes.simulate(.lid(cup, on: true))
         case .ice(let cup): probes.simulate(.ice(cup))
         }

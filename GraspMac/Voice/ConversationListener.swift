@@ -20,16 +20,32 @@ final class ConversationListener {
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private let feed = RequestFeed()
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
+    @ObservationIgnored private var deviceChanges: NSObjectProtocol?
 
     /// Returns why it couldn't start, or nil once listening.
     func start() -> String? {
         guard !isOn else { return nil }
         guard let recognizer, recognizer.isAvailable else { return "Speech recognition isn't available right now." }
+        if let problem = startMicrophone() { return problem }
+        isOn = true
+        // Another app or recognizer on the mic, or new headphones, stops the engine: start it again.
+        deviceChanges = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isOn else { return }
+                _ = self.startMicrophone()
+            }
+        }
+        beginSession()
+        return nil
+    }
+
+    private func startMicrophone() -> String? {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0 else { return "No microphone found." }
 
         let feed = self.feed
+        engine.stop()
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             feed.append(buffer)
@@ -41,13 +57,13 @@ final class ConversationListener {
             input.removeTap(onBus: 0)
             return "Couldn't start the microphone: \(error.localizedDescription)"
         }
-        isOn = true
-        beginSession()
         return nil
     }
 
     func stop() {
         isOn = false
+        deviceChanges.map(NotificationCenter.default.removeObserver)
+        deviceChanges = nil
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         feed.swap(nil)?.endAudio()
@@ -57,6 +73,8 @@ final class ConversationListener {
 
     private func beginSession() {
         guard isOn, let recognizer else { return }
+        // Restarting after "no speech": make sure the mic is still running.
+        if !engine.isRunning { _ = startMicrophone() }
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.contextualStrings = contextualStrings

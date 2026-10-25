@@ -185,6 +185,10 @@ public struct ProtocolRun: Equatable, Sendable {
         guard let step else { return nil }
         if let seen = early[current] { return finish(at: seen.seconds, how: seen.how, celsius: celsius) }
         let number = step.number
+        // A cup with no probe on this bench: your word is all there is, so nothing to note.
+        if let cup = Self.cup(of: step.check), celsius[cup] == nil {
+            return finish(at: seconds, how: .said, celsius: celsius)
+        }
         switch step.check {
         case .sayDone:
             break
@@ -209,7 +213,10 @@ public struct ProtocolRun: Equatable, Sendable {
         if let differs, !deviations.contains(where: { $0.text.hasSuffix(differs) }) {
             note(seconds, "Step \(step.number): the camera saw \(differs)")
         }
-        guard stepDone, step.check == .sayDone else { return nil }
+        // The camera finishes steps the probes can't check: ones that need no probe, and ones for a
+        // cup with no probe on this bench (cup C on the two-cup bench).
+        let noProbe = Self.cup(of: step.check).map { celsius[$0] == nil } ?? false
+        guard stepDone, step.check == .sayDone || noProbe else { return nil }
         return finish(at: seconds, how: .camera(seeing), celsius: celsius)
     }
 
@@ -225,6 +232,9 @@ public struct ProtocolRun: Equatable, Sendable {
     /// What the current step is waiting on, in words, and how far along it is (0 to 1) when that's measurable.
     public func waiting(_ celsius: [Cup: Double], at seconds: Double) -> (text: String, fraction: Double?) {
         guard let step else { return ("Every step is done", 1) }
+        if let cup = Self.cup(of: step.check), celsius[cup] == nil {
+            return ("No probe in cup \(cup.rawValue): say “done”, or the camera will see it", nil)
+        }
         switch step.check {
         case .sayDone:
             return ("Say “done” when it's done", nil)
@@ -239,6 +249,14 @@ public struct ProtocolRun: Equatable, Sendable {
         case .wait(let length):
             let left = max(length - (seconds - stepStarted), 0)
             return ("\(clockTime(left)) left", min((seconds - stepStarted) / length, 1))
+        }
+    }
+
+    /// The cup a probe check watches, if it watches one.
+    public static func cup(of check: LabProtocol.Step.Check) -> Cup? {
+        switch check {
+        case .rises(let cup), .drops(let cup), .below(let cup, _), .above(let cup, _): cup
+        case .sayDone, .wait: nil
         }
     }
 

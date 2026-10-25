@@ -130,3 +130,23 @@ struct NotebookEventTests {
         #expect(abs((notebook.steps[0].celsius ?? 0) - 86.5) < 2)
     }
 }
+
+struct TimeLapseCaptionTests {
+    let notebook = LabNotebook(
+        title: "Cooling", summary: "",
+        steps: [.init(seconds: 10, did: "Poured hot water into cup A", said: nil, cup: .a, celsius: nil, event: nil),
+                .init(seconds: 40, did: "Put the lid on cup B", said: nil, cup: .b, celsius: nil, event: nil)],
+        observations: [], next: [], trace: SensorTrace(readings: []), duration: 60, protocolRecord: nil)
+    let readings = [Reading(cup: .a, celsius: 44.21, time: 35), Reading(cup: .b, celsius: 45.04, time: 36),
+                    Reading(cup: .a, celsius: 43.9, time: 50)]
+
+    @Test func saysTheTimeTheStepAndTheCups() {
+        #expect(TimeLapseCaption.caption(at: 36, notebook: notebook, readings: readings)
+                == "0:36 · Poured hot water into cup A · A 44.2 °C · B 45.0 °C")
+    }
+
+    @Test func leavesOutCupsWithNoReadingThen() {
+        #expect(TimeLapseCaption.caption(at: 50, notebook: notebook, readings: readings) == "0:50 · Put the lid on cup B · A 43.9 °C")
+        #expect(TimeLapseCaption.caption(at: 2, notebook: notebook, readings: readings) == "0:02")
+    }
+}

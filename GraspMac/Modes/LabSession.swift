@@ -27,6 +27,24 @@ final class LabSession {
     /// The last notebook written, for saving.
     @ObservationIgnored private var last: (notebook: LabNotebook, recording: LabRecording, rehearsal: Bool, date: Date)?
 
+    /// A command said at the bench ("done", "go back", "stop recording"), with the words heard:
+    /// hands are wet or full, so no fist or Space is needed while recording.
+    @ObservationIgnored var onCommand: ((BenchCommand, String) -> Void)?
+    /// True while words shouldn't count as commands: Grasp talking, or a fist or Space command underway.
+    @ObservationIgnored var ignoresCommands: () -> Bool = { false }
+    /// The recognizer's text, waiting for a pause before it's checked for a command.
+    @ObservationIgnored private var unchecked: String?
+    /// This recognizer session's text at the last check.
+    @ObservationIgnored private var checked = ""
+    /// Words heard in earlier recognizer sessions, and in this one, for a fist or Space while recording.
+    @ObservationIgnored private var earlierWords: [Substring] = []
+    @ObservationIgnored private var sessionWords: [Substring] = []
+    @ObservationIgnored private var ignoredSome = false
+    @ObservationIgnored private var pause: Task<Void, Never>?
+
+    /// A phrase is finished once nothing new is heard for this long.
+    static let commandPause = Duration.milliseconds(800)
+
     /// A frame every this many seconds.
     static let frameEvery = 4
 
@@ -55,11 +73,25 @@ final class LabSession {
         isRecording = true
         lastHeard = ""
         listener.contextualStrings = Self.benchWords
-        listener.onNewSession = { [weak self] in self?.transcript.endSession() }
+        checked = ""
+        unchecked = nil
+        earlierWords = []
+        sessionWords = []
+        listener.onNewSession = { [weak self] in
+            guard let self else { return }
+            transcript.endSession()
+            // The text starts over: check what was still waiting first.
+            checkForCommand()
+            checked = ""
+            earlierWords += sessionWords
+            sessionWords = []
+        }
         listener.onText = { [weak self] text in
             guard let self else { return }
             transcript.heard(text, at: Date().timeIntervalSince(started))
-            lastHeard = text.split(separator: " ").suffix(8).joined(separator: " ")
+            sessionWords = text.split(separator: " ")
+            lastHeard = sessionWords.suffix(8).joined(separator: " ")
+            waitForPause(after: text)
         }
         let micProblem = listener.start()
         ticker = Task { [weak self] in
@@ -77,6 +109,7 @@ final class LabSession {
     func stop(protocol record: ProtocolRecord? = nil) async -> String {
         guard isRecording else { return "Not taking lab notes" }
         ticker?.cancel()
+        pause?.cancel()
         listener.stop()
         isRecording = false
         let recording = LabRecording(frames: frames, speech: transcript.lines(), readings: readings, duration: elapsed,
@@ -98,12 +131,12 @@ final class LabSession {
         await write(LabRehearsal.recording(), rehearsal: true)
     }
 
-    /// Saves the last notebook to a folder on the Desktop: the notebook with its Methods, every
-    /// reading as a CSV, the transcript and the frames.
-    func save() -> String {
+    /// Saves the last notebook to a folder on the Desktop (or in `parent`): the notebook with its
+    /// Methods, every reading as a CSV, the transcript, the frames, and a time-lapse of the run.
+    func save(in parent: URL? = nil) async -> String {
         guard let last else { return "Take some lab notes first" }
         let stamp = last.date.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
-        let folder = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
+        let folder = (parent ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0])
             .appendingPathComponent("Grasp lab notebook \(stamp)")
         do {
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("frames"), withIntermediateDirectories: true)
@@ -116,8 +149,21 @@ final class LabSession {
                 let name = clockTime(frame.seconds).replacingOccurrences(of: ":", with: "m") + "s.jpg"
                 try frame.jpeg.write(to: folder.appendingPathComponent("frames").appendingPathComponent(name))
             }
-            NSWorkspace.shared.activateFileViewerSelecting([folder.appendingPathComponent("notebook.md")])
-            return "Saved the lab notebook to your Desktop"
+            // The run in under a minute: each frame a quarter of a second, captioned with the step and the cups.
+            var video = ""
+            if !last.recording.frames.isEmpty {
+                let notebook = last.notebook, readings = last.recording.readings
+                do {
+                    try await TimeLapse.write(last.recording.frames,
+                                              captions: { TimeLapseCaption.caption(at: $0, notebook: notebook, readings: readings) },
+                                              to: folder.appendingPathComponent("timelapse.mp4"))
+                    video = ", with a time-lapse of the run"
+                } catch {
+                    video = " (no time-lapse: \(error.localizedDescription))"
+                }
+            }
+            if parent == nil { NSWorkspace.shared.activateFileViewerSelecting([folder.appendingPathComponent("notebook.md")]) }
+            return "Saved the lab notebook to your Desktop" + video
         } catch {
             return "Couldn't save the notebook: \(error.localizedDescription)"
         }
@@ -137,6 +183,40 @@ final class LabSession {
         } catch {
             return "Couldn't write the notebook: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: Commands
+
+    /// How many words have been heard so far: a fist or Space while recording takes the words
+    /// after it from this listener, as a second recognizer on the mic would cut this one off.
+    func wordsHeard() -> Int { earlierWords.count + sessionWords.count }
+
+    func words(since count: Int) -> String {
+        (earlierWords + sessionWords).dropFirst(count).joined(separator: " ")
+    }
+
+    private func waitForPause(after text: String) {
+        unchecked = text
+        if ignoresCommands() { ignoredSome = true }
+        pause?.cancel()
+        pause = Task { [weak self] in
+            try? await Task.sleep(for: Self.commandPause)
+            guard !Task.isCancelled else { return }
+            self?.checkForCommand()
+        }
+    }
+
+    /// The words since the last pause, as one phrase: a command if it ends with one.
+    private func checkForCommand() {
+        guard let text = unchecked else { return }
+        unchecked = nil
+        let said = BenchCommand.newWords(text, since: checked)
+        checked = text
+        // Grasp reading a step aloud, heard back through the mic, isn't a command.
+        let ignored = ignoredSome || ignoresCommands()
+        ignoredSome = false
+        guard isRecording, !ignored, let said, let command = BenchCommand.ending(said) else { return }
+        onCommand?(command, said)
     }
 
     /// Once a second: every probe's reading; every few seconds, a frame.

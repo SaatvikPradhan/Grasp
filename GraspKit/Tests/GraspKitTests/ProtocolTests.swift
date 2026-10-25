@@ -61,8 +61,10 @@ struct LiveProtocolReaderTests {
         let lab = try #require(try await ProtocolReader(client: GeminiClient(apiKey: TestDocumentTests.key!)).read(page: lines, title: "Protocol"))
         print("PROTOCOL \(String(format: "%.1f", Date().timeIntervalSince(started))) s: \(lab.title)")
         for step in lab.steps { print("  \(step.number). \(step.instruction) · \(step.check) · \(step.actions) · found \(step.cited.location != nil)") }
-        #expect(lab.steps.count == 8)
-        #expect(lab.steps.map(\.check) == [.sayDone, .rises(.a), .rises(.b), .rises(.c), .below(.c, 85), .drops(.c), .wait(120), .sayDone])
+        // Two cups on the Pico bench: A open, B with a lid.
+        #expect(lab.steps.count == 5)
+        #expect(lab.steps.map(\.check) == [.sayDone, .rises(.a), .rises(.b), .wait(120), .sayDone])
+        #expect(lab.steps[1].actions == [.pour(.a)])
         #expect(lab.steps[2].actions.contains(.lid(.b)))
         let found = lab.steps.allSatisfy { $0.cited.location != nil }
         #expect(found)

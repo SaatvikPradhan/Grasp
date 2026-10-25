@@ -122,13 +122,13 @@ struct GraspMacApp: App {
                 Button("Compare My Cups with the Paper") { canvas.compareCupsWithPaper() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Rehearse a Lab Session") { Task { await lab.rehearse() } }
-                Button("Save Lab Notebook") { _ = lab.save() }
+                Button("Save Lab Notebook") { Task { _ = await lab.save() } }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
             }
             CommandMenu("Bench") {
                 // The simulated probes act out what hands would do at a real bench.
                 ForEach(Cup.allCases) { cup in
-                    Button("Pour Hot Water into Cup \(cup.rawValue)") { simulate(.pour(cup, celsius: 88), "poured into \(cup.rawValue)") }
+                    Button("Pour Warm Water into Cup \(cup.rawValue)") { simulate(.pour(cup, celsius: SimulatedBench.pourCelsius), "poured into \(cup.rawValue)") }
                 }
                 Divider()
                 ForEach(Cup.allCases) { cup in
@@ -231,6 +231,9 @@ struct GraspMacApp: App {
                 case "lab": await lab.rehearse()
                 case "labstart": _ = lab.start()
                 case "labstop": _ = await lab.stop()
+                case let step where step.hasPrefix("labsave:"):
+                    // labsave:/folder saves the notebook, frames and time-lapse there.
+                    _ = await lab.save(in: URL(filePath: String(step.dropFirst(8))))
                 case "guide": guide.start()
                 case "method": await researcher.mapMethod()
                 case "related": await researcher.findRelatedWork()
@@ -263,7 +266,7 @@ struct GraspMacApp: App {
                 case let step where step.hasPrefix("pour:"):
                     // pour:A, lid:B, ice:C act on the simulated bench.
                     let cup = Cup(rawValue: String(step.dropFirst(5))) ?? .a
-                    simulate(.pour(cup, celsius: 88), "poured into \(cup.rawValue)")
+                    simulate(.pour(cup, celsius: SimulatedBench.pourCelsius), "poured into \(cup.rawValue)")
                 case let step where step.hasPrefix("lid:"):
                     let cup = Cup(rawValue: String(step.dropFirst(4))) ?? .b
                     simulate(.lid(cup, on: true), "lid on \(cup.rawValue)")

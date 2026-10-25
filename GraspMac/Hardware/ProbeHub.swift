@@ -39,6 +39,10 @@ final class ProbeHub {
         guard !started else { return }
         started = true
         use(source)
+        // Snapshot runs are checks: they leave the bench (and the copy of Grasp using it) alone,
+        // unless GRASP_SNAPSHOT_BOARD is set.
+        let environment = ProcessInfo.processInfo.environment
+        if environment["GRASP_SNAPSHOT"] != nil, environment["GRASP_SNAPSHOT_BOARD"] == nil { return }
         let board = SerialProbeSource()
         board.onRoom = { [weak self] celsius in self?.room = celsius }
         board.onAlert = { [weak self] cup in

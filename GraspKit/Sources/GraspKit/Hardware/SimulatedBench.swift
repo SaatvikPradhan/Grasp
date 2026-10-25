@@ -26,6 +26,8 @@ public struct SimulatedBench: Sendable {
     public static let openTau = 60 / 0.031
     /// With a lid: k = 0.019 per minute.
     public static let lidTau = 60 / 0.019
+    /// The water poured, as on the protocol page: the straw-sealed probes soften above 60 °C.
+    public static let pourCelsius = 50.0
     /// Two ice cubes take about this much off.
     public static let iceDrop = 18.0
 

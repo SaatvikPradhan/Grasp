@@ -64,8 +64,8 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Does it add up?** | Every total, hours × rate and percentage on a page is re-checked in Swift; a wrong one shows as a red catch with the right number | `PageReading.relations`, `mismatches` |
 | **Your notes, checked** | Hand it a paper, then your notes: each note is linked to its passage and marked matches / differs / not in the paper, with research directions grounded in what the paper leaves open | `NoteLinker`, `Researcher`; ⌘⇧N or "these are my notes" |
 | **Lab notes** | While recording: camera frames, speech and probe readings. Stopping writes the notebook: each step with what was said and what its probe did then, how they connect, what to try next; ⌘⇧E saves it with Methods, CSV, transcript and frames | `SensorTrace`, `LabNotebookWriter`, `LabSession`; ⌘⇧R or "start lab notes" |
-| **Paper → live model** | A paper's equation and each condition's rate, traced to the page, run in Swift; twist k, swipe the condition; every reported result re-derived from the paper's own k; push into the cup chart to fit your cups' k with an error bar | `ModelReader`, `PaperModel`, `FittedRate`; ⌘⇧B compares your cups |
-| **Guided protocol** | Hand it a protocol and say "I'm starting the experiment": each step read aloud, the probes confirm pours, waits and drops, the bench camera confirms what the probes can't (two looks in a row) and says when something's done differently, every step timed, and the notebook gets the protocol table | `ProtocolReader`, `ProtocolRun`, `ProtocolGuide`, `BenchWatcher`; ⌘⇧G, "done", ⌘⏎ |
+| **Paper → live model** | A paper's equation and each condition's rate, traced to the page, run in Swift; twist k, swipe the condition; every reported result re-derived from the paper's own k; push into the cup chart to fit your cups' k with an error bar: the paper's figure and your cups side by side, each cup solid against the paper's ideal (dashed) from the same start in the room the bench measures | `ModelReader`, `PaperModel`, `FittedRate`; ⌘⇧B compares your cups |
+| **Guided protocol** | Hand it a protocol and say "I'm starting the experiment": each step read aloud, the probes confirm pours, waits and drops, the bench camera confirms what the probes can't (two looks in a row) and says when something's done differently, every step timed, and the notebook gets the protocol table. No fist needed while it records: "done", "go back", "say that again", "we're done" | `ProtocolReader`, `ProtocolRun`, `ProtocolGuide`, `BenchWatcher`, `BenchCommand`; ⌘⇧G, "done", ⌘⏎ |
 | **Method map** | The Methods as a diagram: what was varied, measured, held the same and not controlled, how it was analysed, how many trials, each box tied to its sentence | `MethodReader`; ⌘⇧M or "map the method" |
 | **Related work** | Real OpenAlex papers closest to this one, and for each direction "studied", "partly" or "looks open", judged only against papers the search returned | `RelatedWorkFinder`, `OpenAlexClient`; ⌘⇧F or "has anyone done this?" |
 | **Write the dispute** | From a bill to a letter: each error with an amount Swift works out from numbers printed on the bill, a total to get back, charges worth asking about kept out of the total | `DisputeWriter`, `Disputer`; ⌘⇧W, ⌘⇧C copies it |
@@ -101,7 +101,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 |---|---|---|
 | **Laptop (Mac)** | The canvas | macOS SwiftUI app. Shows everything. Webcam tracks hands. Reads sensors over USB. Calls Gemini. Mirror to a TV if available. |
 | **iPhone** | The eye | Thin iOS app. Hold up to a contract, or stand it over the bench. Sends frames to the Mac over Multipeer Connectivity. Shows highlights sent back. |
-| **Sensors** | Live data | 3× DS18B20 probes on an ESP32 (or Arduino) over USB. LED strip. Optional receipt printer. |
+| **Sensors** | Live data | Built Oct 25: a Raspberry Pi Pico W over USB with two sealed thermistor cups (A, B), a DHT11 for room air, a buzzer and an I2C LCD (`firmware/pico/main.py`; wiring in the two-cup hardware guide). Grasp finds it by itself and falls back to the simulated bench without it. |
 
 ---
 
@@ -182,9 +182,9 @@ Props: toy car or cardboard door with printed window sticker + dealer add-on sti
 The Research track asks for a tool that removes a bottleneck. Grasp removes several: re-deriving a paper's numbers, reproducing its result, hand notes, a stopwatch, writing the Methods, and checking whether an idea is new.
 1. **0:00 The paper.** Hand Grasp the paper on lids and cooling. It becomes a live model beside the page and flags the result that doesn't follow from its own equation: "Ceramic, lid: the table says 25.9 min, its k gives 33.6." Hover the red dot for the cell in the table.
 2. **0:30 Play with it.** Twist k; swipe from "no lid" to "lid". ⌘⇧M maps the method: what was varied, held the same, and not controlled (evaporation, fill volume).
-3. **0:50 Run it.** Hand it the protocol and say "I'm starting the experiment." Grasp reads each step aloud. Pour into A, B (lid on) and C: the probes confirm each pour and the step ticks off with its time.
+3. **0:50 Run it.** Hand it the protocol and say "I'm starting the experiment." Grasp reads each step aloud and the bench screen shows "Step 2 of 5". Pour warm water (about 50 °C) into A, then B with the lid on: the probes confirm each pour and the step ticks off with its time. Hands are wet, so just say "done".
 4. **1:40 Your cups against the paper.** Push the model into the live cup chart. "Cup B: k 0.019 ± 0.002, closest Paper, lid (0.019): consistent." Reproducing a result, live.
-5. **2:10 Write it up.** Ice into C, finish the protocol: the notebook writes itself with the protocol table, what was said, and what each probe did. Hand Grasp a page of notes on the paper: 4 of 8 differ from it.
+5. **2:10 Write it up.** After the 2-minute wait, say "we're done": the notebook writes itself with the protocol table, what was said, and what each probe did. Hand Grasp a page of notes on the paper: 4 of 8 differ from it.
 6. **2:40 What's next.** "Has anyone done this?" Real papers from OpenAlex; "measuring evaporation: looks open". ⌘⇧E saves the notebook folder to show them.
 
 **Backup experiment:** the same flow with ice and salt (freezing-point depression), or the scripted rehearsal session if hot water isn't allowed at the table.
@@ -316,7 +316,7 @@ Rate check (if time): FRED has commercial-bank new-car loan rate series (e.g. `T
 - **Thermal printer:** TTL serial at 19200 baud; ESP32 `Serial2` (e.g. GPIO16/17), Uno `SoftwareSerial`; separate 5 V 2 A supply; **common ground** with the board. Library: `Adafruit_Thermal`.
 
 ### Bench supplies (cooling cups)
-Three 350 mL paper cups and one plastic lid · kettle or hot water from the food area (about 90 °C) · ice · tray · paper towels · tape and marker (label A, B, C). Probes: 3 waterproof DS18B20 from the MLH table, or the kit thermistors (two cups); see the hardware guide.
+Two 350 mL paper cups and one plastic lid · warm water about 50 °C (below 60 °C: the straw seals soften; let kettle water cool) · tray · paper towels · tape and marker (label A, B, C). Probes: 3 waterproof DS18B20 from the MLH table, or the kit thermistors (two cups); see the hardware guide.
 
 ### To print
 `props/research-paper.html` (the paper) · `props/paper-notes.html` (the notes) · `props/protocol.html` (the protocol) · car contract ×2 (`props/contract.html`) · window sticker + dealer add-on sticker · credit union quote card · phone bill (`props/phone-bill.html`, for the dispute) · toy car or cardboard car door.
@@ -367,7 +367,7 @@ Hours count from when you start. Live checklist with clock times: https://claude
 | Hand tracking jitter | Smoothing, higher pinch threshold, no bright window behind you |
 | Hall noise breaks voice | AirPods mic + push-to-talk key |
 | Hot water not allowed at the table | Ice and salt version, same probes and flow; or the simulated bench (Bench menu) with the same steps |
-| Cooling is slow to watch | k fits from about 20 s of cooling; the guided run's "wait below 85 °C" step takes about 1.5 min from a fresh pour |
+| Cooling is slow to watch | k fits from about 20 s of cooling; the guided run is 5 steps with one 2-minute wait |
 | No receipt printer | Show the decision summary PDF (⌘E) |
 | A live act fails on stage | Play the backup video of that act and say what it shows |
 | Recording consent (Pennsylvania requires everyone's consent) | Money mode listens only with consent, or works from documents and your own voice |

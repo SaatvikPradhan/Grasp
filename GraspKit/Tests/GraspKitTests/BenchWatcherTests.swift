@@ -21,6 +21,19 @@ struct CameraStepTests {
         #expect(run.current == 1)
     }
 
+    @Test func aCupWithNoProbeFinishesByCameraOrWord() {
+        // The two-cup bench: probes in A and B only. Step 5 drops ice into A in the test protocol;
+        // here A has no probe, so the camera (or "done") moves it on, with nothing noted.
+        let twoCups: [Cup: Double] = [.b: 21.5, .c: 21.5]
+        var run = ProtocolRun(LabProtocol(title: "", steps: [ProtocolRunTests.lab.steps[4], ProtocolRunTests.lab.steps[0]]),
+                              at: 0, celsius: twoCups)
+        #expect(run.waiting(twoCups, at: 1).text.hasPrefix("No probe in cup A"))
+        #expect(run.update(twoCups, at: 2) == nil)
+        #expect(run.cameraSaw("ice in cup A", stepDone: true, differs: nil, at: 5, celsius: twoCups)?.how == .camera("ice in cup A"))
+        #expect(run.sayDone(at: 9, celsius: twoCups)?.how == .said)
+        #expect(run.deviations.isEmpty)
+    }
+
     @Test func somethingDoneDifferentlyIsNotedOnce() {
         var run = ProtocolRun(ProtocolRunTests.lab, at: 0, celsius: room)
         _ = run.cameraSaw("pouring", stepDone: false, differs: "the lid is on cup A, not B", at: 5, celsius: room)

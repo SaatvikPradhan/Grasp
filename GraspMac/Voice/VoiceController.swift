@@ -30,6 +30,8 @@ final class VoiceController {
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
+    /// While lab notes record, the words heard before the fist or Space, as the lab's listener has the mic.
+    @ObservationIgnored private var labWordsBefore: Int?
 
     init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession, guide: ProtocolGuide,
          disputer: Disputer, diver: DeepDiver, planner: PagePlanner) {
@@ -42,6 +44,8 @@ final class VoiceController {
         self.disputer = disputer
         self.diver = diver
         self.planner = planner
+        lab.ignoresCommands = { [weak self] in self.map { $0.isWorking || $0.money.voiceOut.isSpeaking } ?? true }
+        lab.onCommand = { [weak self] command, heard in self?.benchCommand(command, heard: heard) }
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -50,6 +54,11 @@ final class VoiceController {
         case .listening, .thinking: true
         default: false
         }
+    }
+
+    /// Working out a command, so words at the bench shouldn't start another.
+    private var isWorking: Bool {
+        if case .thinking = phase { true } else { false }
     }
 
     func start() async {
@@ -78,7 +87,8 @@ final class VoiceController {
 
     /// Every camera frame: a fist starts listening, opening it (or the hand leaving) sends.
     func handsChanged(_ hands: [TrackedHand]) {
-        let fist = hands.contains(where: \.isFist)
+        // At the bench a hand around a cup or kettle looks like a fist, and "done" needs no fist.
+        let fist = hands.contains(where: \.isFist) && !lab.isRecording
         if fist, !talkingByFist, phase != .listening {
             talkingByFist = true
             beginTalking()
@@ -90,6 +100,12 @@ final class VoiceController {
 
     func beginTalking() {
         clearTask?.cancel()
+        // Lab notes already have the mic: a second recognizer would cut them off.
+        if lab.isRecording {
+            labWordsBefore = lab.wordsHeard()
+            phase = .listening
+            return
+        }
         switch listener.availability {
         case .ready:
             phase = .listening
@@ -102,6 +118,18 @@ final class VoiceController {
     }
 
     func endTalking() {
+        if let before = labWordsBefore {
+            labWordsBefore = nil
+            // "Done" said while holding is already handled by the bench listener.
+            guard phase == .listening else { return }
+            Task { [weak self] in
+                // The last words arrive a moment after they're said.
+                try? await Task.sleep(for: .milliseconds(900))
+                guard let self, phase == .listening else { return }
+                interpret(lab.words(since: before))
+            }
+            return
+        }
         guard phase == .listening else { return }
         listener.stop { [weak self] words in
             self?.interpret(words)
@@ -128,6 +156,21 @@ final class VoiceController {
                 show(.failed(error.localizedDescription))
             }
         }
+    }
+
+    /// A command said at the bench while lab notes run, heard without a fist or Space. With no
+    /// guided run, only "stop" means anything: "done" on its own might just be talk.
+    private func benchCommand(_ command: BenchCommand, heard: String) {
+        let voiceCommand: VoiceCommand = switch command {
+        case .next: .protocolStep(.next)
+        case .back: .protocolStep(.back)
+        case .again: .protocolStep(.again)
+        case .finish: .finishExperiment
+        }
+        guard guide.isRunning || command == .finish else { return }
+        clearTask?.cancel()
+        phase = .thinking(heard: heard)
+        Task { show(.done(heard: heard, result: await perform(voiceCommand))) }
     }
 
     /// Runs a command and says what happened.
@@ -194,7 +237,7 @@ final class VoiceController {
         case .finishExperiment:
             return guide.isRunning ? await guide.finish() : await lab.stop()
         case .saveNotebook:
-            return lab.save()
+            return await lab.save()
         case .comingSoon(let request):
             return "\"\(request.capitalized)\" isn't built yet"
         case .none:
