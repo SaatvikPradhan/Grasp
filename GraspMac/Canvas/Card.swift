@@ -183,6 +183,8 @@ struct DeepDiveCard: Equatable {
     /// Nil while searching.
     var dive: DeepDive?
     var failure: String?
+    /// What to do about the whole page (how it compares, steps to fix it), not one thing on it.
+    var isPlan = false
 }
 
 /// Notes typed right on the canvas beside a page, one per line, ready to check against it.
@@ -193,6 +195,8 @@ struct NotePadCard: Equatable {
     var text: String
     /// Being checked against the page.
     var isChecking = false
+    /// Opened with Edit: puts the cursor in it once.
+    var startsEditing = false
 
     var lines: [String] {
         text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -450,10 +454,15 @@ struct Card: Identifiable, Equatable {
     static func deepDiveHeight(_ card: DeepDiveCard) -> Double {
         guard let dive = card.dive else { return 210 }
         // About 66 characters to a line of finding text.
-        let findings = dive.findings.map { 10 + 18 * ceil(Double($0.text.count) / 66) }.reduce(0, +)
+        var findings = 0.0
+        for finding in dive.findings { findings += 10 + 18 * min(3, ceil(Double(finding.text.count) / 74)) }
+        if card.isPlan, !dive.findings.isEmpty { findings += 26 }
+        if !dive.steps.isEmpty { findings += 30 }
+        for step in dive.steps { findings += 10 + 18 * min(3, ceil(Double(step.text.count + 12) / 72)) }
+        if dive.bottomLineMath != nil { findings += 20 }
         let bottomLine = dive.bottomLine.map { 34 + 19 * ceil(Double($0.count) / 58) } ?? 0
-        let sources = dive.sources.isEmpty ? 0 : 30 + 21 * ceil(Double(min(dive.sources.count, 6)) / 2)
-        return 150 + findings + bottomLine + sources
+        let sources = dive.sources.isEmpty ? 0 : 30 + 21 * ceil(Double(min(dive.sources.count, card.isPlan ? 4 : 6)) / 2)
+        return (card.isPlan ? 128 : 150) + findings + bottomLine + sources
     }
 
     static func letterHeight(_ letter: DisputeLetter) -> Double {
@@ -539,6 +548,18 @@ extension Card.Kind {
         default: false
         }
     }
+}
+
+/// The oldest groups of chips, behind one pill, when there are too many to show.
+struct ChipOverflow: Equatable {
+    struct Page: Equatable, Identifiable {
+        var id: UUID
+        var title: String
+    }
+
+    var frame: CGRect
+    /// Each hidden group's first chip, oldest first; picking one brings its group back.
+    var pages: [Page]
 }
 
 /// A group of chips down the left edge: a page and what sat beside it, or the car deal.

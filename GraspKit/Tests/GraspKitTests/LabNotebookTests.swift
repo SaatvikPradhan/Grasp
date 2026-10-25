@@ -3,6 +3,20 @@ import Testing
 @testable import GraspKit
 
 struct TranscriptBuilderTests {
+    @Test func shortPhrasesSurviveANewSession() {
+        // "Lid on." was lost: the next session's first words replaced it.
+        var builder = TranscriptBuilder()
+        builder.heard("Lid", at: 18)
+        builder.heard("Lid on", at: 18.3)
+        builder.endSession()
+        builder.heard("Cup", at: 22)
+        builder.heard("Cup B gets the lid", at: 22.6)
+        #expect(builder.lines() == [
+            .init(seconds: 18, text: "Lid on"),
+            .init(seconds: 22, text: "Cup B gets the lid"),
+        ])
+    }
+
     @Test func wordsKeepTheTimeTheyWereFirstHeardAndLinesBreakAtPauses() {
         var builder = TranscriptBuilder()
         builder.heard("Pouring the", at: 9)

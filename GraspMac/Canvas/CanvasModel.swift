@@ -36,6 +36,10 @@ final class CanvasModel {
     @ObservationIgnored private var groupInFocus: UUID?
     /// The groups of chips down the left edge, for drawing a tray behind each.
     private(set) var chipTrays: [ChipTray] = []
+    /// Chips tucked under their page's chip when there are too many groups to show in full.
+    private(set) var tuckedChips: Set<UUID> = []
+    /// The oldest groups, behind one pill at the top of the chips, when even tucked they don't fit.
+    private(set) var chipOverflow: ChipOverflow?
     /// What's being hovered, by mouse or by a hand held still over it.
     private(set) var hovered: HoverTarget?
     /// Called when the hovered item changes, for lighting the same spot on the phone.
@@ -127,8 +131,7 @@ final class CanvasModel {
                 toggleStyle(at: point(fromCanvasUnits: swipe.origin))
             }
             if hand.thumbsUp {
-                let p = point(for: hand)
-                putAway(cards.last { !$0.isFolded && $0.frame.contains(p) }?.id)
+                putAway(topCard(at: point(for: hand)).flatMap { $0.isFolded ? nil : $0.id })
             }
             track(hand)
         }
@@ -151,7 +154,7 @@ final class CanvasModel {
             // Grabbing puts it in focus, and a chip opens up under the hand.
             // A second hand pinching the card the first is holding doesn't grab it: two hands on one
             // thing are about to zoom into it.
-            if let found = cards.last(where: { $0.frame.contains(p) }), !grips.values.contains(where: { $0.cardID == found.id }) {
+            if let found = topCard(at: p), !grips.values.contains(where: { $0.cardID == found.id }) {
                 focus(found.id, openingAt: p)
                 guard let card = cards.last else { return }
                 grips[hand.id] = Grip(
@@ -250,7 +253,8 @@ final class CanvasModel {
             return answer.sources[safe: index]?.documentID
         case .cited(let cardID, let index):
             return card(cardID).flatMap { citations(for: $0)[safe: index]?.documentID }
-        case .derived(let cardID, _), .passage(let cardID, _), .labStep(let cardID, _), .work(let cardID, _), .webFinding(let cardID, _):
+        case .derived(let cardID, _), .passage(let cardID, _), .labStep(let cardID, _), .work(let cardID, _), .webFinding(let cardID, _),
+             .planStep(let cardID, _):
             return card(cardID).flatMap(pageDocument(of:))?.id
         }
     }
@@ -320,6 +324,35 @@ final class CanvasModel {
             dock(added.id)
         }
         focusedID = added.id
+        return added.id
+    }
+
+    /// Shows what to do about a page beside it, replacing an earlier plan for it. It sits beside the
+    /// page when nothing else does, and waits as a chip in the page's group otherwise.
+    @discardableResult
+    func showPlan(_ plan: DeepDiveCard) -> UUID {
+        let isSamePlan: (Card) -> Bool = { card in
+            if case .deepDive(let old) = card.kind { old.isPlan && old.documentID == plan.documentID } else { false }
+        }
+        if let existing = cards.first(where: isSamePlan) {
+            withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+                if let index = index(of: existing.id) { cards[index].kind = .deepDive(plan) }
+            }
+            return existing.id
+        }
+        var added = Card(center: .zero, kind: .deepDive(plan))
+        let page = cards.first { document(for: $0)?.id == plan.documentID }
+        let besideOpen = page?.id == pageInFocus && page?.isFolded == false
+            && !cards.contains { !$0.isFolded && $0.kind.sitsBeside && group(of: $0) == group(of: page!) }
+        added.center = freeSpot(for: added.size)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            cards.append(added)
+            if besideOpen {
+                dock(added.id)
+            } else {
+                fold(added.id)
+            }
+        }
         return added.id
     }
 
@@ -642,6 +675,8 @@ final class CanvasModel {
 
     /// Chips down the left edge, a group at a time in the order they folded: a page (or the car
     /// deal) on top, then what sat beside it, indented. A group that doesn't fit starts a new column.
+    /// When that would take more than two columns, groups out of focus show only their page, with
+    /// a count of what's tucked under it, so the chips stay clear of the cards.
     private func layoutChips() {
         chipOrder.removeAll { id in !cards.contains { $0.id == id && $0.isFolded } }
         var groups: [(key: UUID, ids: [UUID])] = []
@@ -650,28 +685,84 @@ final class CanvasModel {
             let key = group(of: card)
             if let at = groups.firstIndex(where: { $0.key == key }) { groups[at].ids.append(id) } else { groups.append((key, [id])) }
         }
+        var plan = planChips(groups, compact: false, earlier: [])
+        if plan.columns > Self.chipColumns { plan = planChips(groups, compact: true, earlier: []) }
+        // Still too many: the oldest groups go behind one "earlier pages" pill, never the one in focus.
+        var earlier: [UUID] = []
+        for group in groups where plan.columns > Self.chipColumns && group.key != groupInFocus {
+            earlier.append(group.key)
+            plan = planChips(groups, compact: true, earlier: Set(earlier))
+        }
+        for (id, center) in plan.centers {
+            if let index = index(of: id) { cards[index].center = center }
+        }
+        tuckedChips = plan.tucked
+        chipTrays = plan.trays
+        chipOverflow = plan.overflow.map { frame in
+            ChipOverflow(frame: frame, pages: earlier.compactMap { key in
+                groups.first { $0.key == key }.flatMap { group in
+                    group.ids.first { card($0)?.kind.isPage == true } ?? group.ids.first
+                }.flatMap { id in card(id).map { ChipOverflow.Page(id: id, title: chipTitle($0)) } }
+            })
+        }
+        // Nothing open sits under the chips: a card there moves to open space.
+        let column = chipColumn
+        for card in cards where !card.isFolded && folds(card) && card.id != focusedID && card.id != mouseGrip?.id
+            && column.contains(where: { $0.intersects(card.frame) }) {
+            moveCard(card.id, to: freeSpot(for: card.size, excluding: card.id))
+        }
+    }
+
+    /// Chip columns before groups out of focus fold down to their page.
+    static let chipColumns = 2
+
+    /// Where each chip goes, the trays behind the groups, which chips are tucked under their page,
+    /// and where the "earlier pages" pill goes when the `earlier` groups are behind it.
+    private func planChips(_ groups: [(key: UUID, ids: [UUID])], compact: Bool, earlier: Set<UUID>)
+        -> (centers: [UUID: CGPoint], trays: [ChipTray], tucked: Set<UUID>, columns: Int, overflow: CGRect?) {
         let top: CGFloat = 130, gap: CGFloat = 6, pad: CGFloat = 8, groupGap: CGFloat = 18
         let bottom = canvasSize.height - (showDebug ? Self.debugPanelHeight + 10 : 90)
-        var x: CGFloat = 28, y = top
-        var trays: [ChipTray] = []
-        for group in groups {
-            let ids = group.ids.filter { card($0)?.kind.isPage == true } + group.ids.filter { card($0)?.kind.isPage != true }
+        var x: CGFloat = 28, y = top, columns = 1
+        var centers: [UUID: CGPoint] = [:], trays: [ChipTray] = [], tucked: Set<UUID> = []
+        var overflow: CGRect?
+        if !earlier.isEmpty {
+            let pill = CGRect(x: x, y: y, width: Card.chipSize.width, height: 34)
+            overflow = pill
+            y += pill.height + groupGap
+            for group in groups where earlier.contains(group.key) {
+                tucked.formUnion(group.ids)
+                for id in group.ids { centers[id] = CGPoint(x: pill.midX, y: pill.midY) }
+            }
+        }
+        for group in groups where !earlier.contains(group.key) {
+            let ordered = group.ids.filter { card($0)?.kind.isPage == true } + group.ids.filter { card($0)?.kind.isPage != true }
+            // Folded down: the page chip alone (or the first chip, when the page is open).
+            let shown = compact && group.key != groupInFocus ? Array(ordered.prefix(1)) : ordered
+            tucked.formUnion(ordered.dropFirst(shown.count))
             let caption = group.key == Self.carDeal ? "Car deal" : nil
-            let trayed = ids.count > 1 || caption != nil || group.key == groupInFocus
-            var height = gap * CGFloat(ids.count - 1) + (caption == nil ? 0 : ChipTray.captionHeight)
-            for id in ids { height += card(id)?.size.height ?? 0 }
+            let trayed = ordered.count > 1 || caption != nil || group.key == groupInFocus
+            var height = gap * CGFloat(shown.count - 1) + (caption == nil ? 0 : ChipTray.captionHeight)
+            for id in shown { height += card(id)?.size.height ?? 0 }
             if y > top, y + height > bottom {
                 x += Card.chipSize.width + 2 * pad + 14
                 y = top
+                columns += 1
             }
             if caption != nil { y += ChipTray.captionHeight }
             var frames: [CGRect] = []
-            for id in ids {
-                guard let index = index(of: id) else { continue }
-                let size = cards[index].size
-                cards[index].center = CGPoint(x: x + Card.chipSize.width - size.width / 2, y: y + size.height / 2)
-                frames.append(cards[index].frame)
+            for id in shown {
+                guard let size = card(id)?.size else { continue }
+                let center = CGPoint(x: x + Card.chipSize.width - size.width / 2, y: y + size.height / 2)
+                centers[id] = center
+                frames.append(CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height))
                 y += size.height + gap
+            }
+            // Tucked chips wait under the one shown, ready to slide out.
+            if let first = shown.first, let under = centers[first] {
+                for id in ordered.dropFirst(shown.count) {
+                    guard let size = card(id)?.size else { continue }
+                    centers[id] = CGPoint(x: under.x + (Card.chipSize.width - size.width) / 2, y: under.y)
+                }
             }
             if trayed, let first = frames.first {
                 var frame = frames.dropFirst().reduce(first) { $0.union($1) }.insetBy(dx: -pad, dy: -pad)
@@ -683,18 +774,47 @@ final class CanvasModel {
             }
             y += groupGap - gap
         }
-        chipTrays = trays
-        // Nothing open sits under the chips: a card there moves to open space.
-        let column = chipColumn
-        for card in cards where !card.isFolded && folds(card) && card.id != focusedID && card.id != mouseGrip?.id
-            && column.contains(where: { $0.intersects(card.frame) }) {
-            moveCard(card.id, to: freeSpot(for: card.size, excluding: card.id))
+        return (centers, trays, tucked, columns, overflow)
+    }
+
+    /// A chip's name in the "earlier pages" menu.
+    private func chipTitle(_ card: Card) -> String {
+        switch card.kind {
+        case .document(let document): document.reading.title
+        case .loan, .comparison, .advice, .pitch: "Car deal"
+        case .scan(let scan): if case .read(let reading) = scan.status { ScanCardView.title(reading.documentType) } else { "Photo" }
+        case .answer(let answer): answer.question
+        case .notebook(let notebook): notebook.notebook.title
+        case .notePad(let pad): pad.title
+        case .deepDive(let dive): dive.isPlan ? "What to do: \(dive.subject.topic)" : "Deep dive: \(dive.subject.topic)"
+        default: "Card"
         }
+    }
+
+    /// The card drawn on top at a point, as a hand or the mouse would reach it; tucked chips don't count.
+    func topCard(at point: CGPoint) -> Card? {
+        drawOrder.last { !tuckedChips.contains($0.id) && $0.frame.contains(point) }
+    }
+
+    /// How many chips are tucked under this one, shown as "+2" on it.
+    func tuckedCount(under id: UUID) -> Int {
+        guard let card = card(id), !tuckedChips.isEmpty else { return 0 }
+        let key = group(of: card)
+        return cards.filter { tuckedChips.contains($0.id) && group(of: $0) == key }.count
+    }
+
+    /// Cards in drawing order: open cards, then the chips over them, then whatever a hand or the
+    /// mouse is holding, so a chip is never hidden under a card.
+    var drawOrder: [Card] {
+        let held = cards.filter { isHeld($0.id) || $0.isArriving }
+        let heldIDs = Set(held.map(\.id))
+        return cards.filter { !$0.isFolded && !heldIDs.contains($0.id) } + cards.filter { $0.isFolded && !heldIDs.contains($0.id) } + held
     }
 
     /// The chips and their trays.
     private var chipColumn: [CGRect] {
-        chipTrays.map(\.frame) + cards.filter(\.isFolded).map(\.frame)
+        chipTrays.map(\.frame) + cards.filter { $0.isFolded && !tuckedChips.contains($0.id) }.map(\.frame)
+            + [chipOverflow?.frame].compactMap { $0 }
     }
 
     /// Where open cards can start, right of the chips.
@@ -732,7 +852,7 @@ final class CanvasModel {
 
     /// Flips the card under `point`, or the frontmost card.
     private func toggleStyle(at point: CGPoint) {
-        guard let card = cards.last(where: { $0.frame.contains(point) }) ?? cards.last else { return }
+        guard let card = topCard(at: point) ?? cards.last else { return }
         toggleStyle(of: card.id)
     }
 
@@ -1266,7 +1386,7 @@ extension CanvasModel {
             let source = answer.sources[index]
             guard let capture = documents[source.documentID]?.captureID, let rect = source.box else { return nil }
             return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
-        case .labStep, .work, .webFinding, .moment:
+        case .labStep, .work, .webFinding, .moment, .planStep:
             return nil
         case .cited(let cardID, let index):
             guard let card = card(cardID), let citation = citations(for: card)[safe: index],
@@ -1509,7 +1629,7 @@ extension CanvasModel {
         let title = documents[notes.paperID].map { "Notes on \($0.reading.title)" } ?? "Notes"
         withAnimation(.spring(duration: 0.4)) {
             cards[index].kind = .notePad(NotePadCard(documentID: notes.paperID, title: title,
-                                                    text: notes.linked.notes.map(\.note).joined(separator: "\n")))
+                                                    text: notes.linked.notes.map(\.note).joined(separator: "\n"), startsEditing: true))
             if pageInFocus != nil { dock(id) }
         }
     }
@@ -1651,6 +1771,17 @@ extension CanvasModel {
 
     func provenance(for target: HoverTarget) -> Provenance? {
         switch target {
+        case .planStep(let cardID, let index):
+            guard case .deepDive(let card)? = card(cardID)?.kind, let step = card.dive?.steps[safe: index] else { return nil }
+            // A step that fixes a catch shows that catch where it is on the page.
+            if let catchIndex = step.catchIndex, let documentID = card.documentID, let document = documents[documentID],
+               let item = document.reading.allCatches[safe: catchIndex] {
+                let crop = document.catchBoxes[item.title].flatMap { PageCrop.around($0, in: document.image) }
+                return Provenance(heading: "Step \(index + 1) fixes: \(item.title)", origin: origin(of: document),
+                                  quote: item.quote, formula: item.explanation, crop: crop?.image, highlight: crop?.highlight)
+            }
+            return Provenance(heading: "Step \(index + 1)", origin: "Grasp's suggestion, from the page and what's typical",
+                              quote: step.text)
         case .webFinding(let cardID, let index):
             guard case .deepDive(let card)? = card(cardID)?.kind, let dive = card.dive, let finding = dive.findings[safe: index] else { return nil }
             let sites = finding.sources.compactMap { number in dive.sources[safe: number].map { "[\(number + 1)] \($0.site)" } }

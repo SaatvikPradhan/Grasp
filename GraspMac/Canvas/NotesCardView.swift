@@ -27,15 +27,17 @@ struct NotesCardView: View {
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 8)
-                Button { canvas.editNotes(cardID) } label: {
-                    Label("Edit", systemImage: "square.and.pencil")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Capsule().stroke(Theme.line))
-                }
-                .buttonStyle(.plain)
+                // A tap on the pill itself, like every click inside a card: a Button here loses the
+                // click to the card's own tap, double-tap and drag.
+                Label("Edit", systemImage: "square.and.pencil")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Theme.surface))
+                    .overlay(Capsule().stroke(Theme.line))
+                    .contentShape(Capsule())
+                    .onTapGesture { canvas.editNotes(cardID) }
             }
 
             ForEach(Array(notes.enumerated()), id: \.offset) { index, note in

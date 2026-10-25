@@ -17,6 +17,8 @@ struct NotePadCardView: View {
         card.documentID.flatMap { canvas.documents[$0] }.flatMap { $0.video == nil ? nil : $0 }
     }
 
+    private var canCheck: Bool { card.documentID != nil && !card.lines.isEmpty && !card.isChecking }
+
     /// "[0:36] ", where the video is now, once it has played.
     private var stamp: String? {
         guard let video, let seconds = VideoPlayers.shared.currentTime(of: video), seconds > 0.5 else { return nil }
@@ -68,25 +70,29 @@ struct NotePadCardView: View {
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Button {
-                    editing = false
-                    canvas.onCheckNotePad?(cardID)
-                } label: {
-                    Text(card.isChecking ? "Checking\u{2026}" : video == nil ? "Check against the page" : "Check against the video")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.paper)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Theme.accent))
-                }
-                .buttonStyle(.plain)
-                .disabled(card.documentID == nil || card.lines.isEmpty || card.isChecking)
-                .opacity(card.documentID == nil || card.lines.isEmpty ? 0.4 : 1)
+                // A tap on the pill itself: a Button inside a card loses the click to the card's own gestures.
+                Text(card.isChecking ? "Checking\u{2026}" : video == nil ? "Check against the page" : "Check against the video")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.paper)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Theme.accent))
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        guard canCheck else { return }
+                        editing = false
+                        canvas.onCheckNotePad?(cardID)
+                    }
+                    .opacity(canCheck || card.isChecking ? 1 : 0.4)
             }
         }
         .onAppear {
             text = card.text
-            if card.text.isEmpty { editing = true }
+            // A new pad, or one just opened with Edit, is ready to type in.
+            if card.text.isEmpty || card.startsEditing {
+                editing = true
+                canvas.updateNotePad(cardID) { $0.startsEditing = false }
+            }
         }
         .onChange(of: text) { old, new in
             // A new line under a playing video starts with its time.

@@ -77,6 +77,7 @@ public struct ProtocolRecord: Equatable, Sendable {
             case .probe(let text): text
             case .timer: "timer"
             case .said: "you said done"
+            case .camera(let text): "camera saw: \(text)"
             case nil: nil
             }
             return Step(number: step.number, instruction: step.instruction, finished: done?.finished, how: how)
@@ -105,6 +106,8 @@ public struct ProtocolRun: Equatable, Sendable {
         case timer
         /// You said it was done.
         case said
+        /// The bench camera saw it done: "two ice cubes in cup C".
+        case camera(String)
     }
 
     public struct Done: Equatable, Sendable {
@@ -195,6 +198,19 @@ public struct ProtocolRun: Equatable, Sendable {
             note(seconds, "Step \(number): the \(clockTime(length)) wait ended after \(clockTime(seconds - stepStarted))")
         }
         return finish(at: seconds, how: .said, celsius: celsius)
+    }
+
+    /// What the bench camera saw: a step the probes can't check (placing cups, ice, a lid on a cup
+    /// whose probe won't show it) finishes when it clearly looks done; something done differently from
+    /// the page is noted, once. Probe-checked steps wait for their probe.
+    public mutating func cameraSaw(_ seeing: String, stepDone: Bool, differs: String?, at seconds: Double,
+                                   celsius: [Cup: Double]) -> Done? {
+        guard let step else { return nil }
+        if let differs, !deviations.contains(where: { $0.text.hasSuffix(differs) }) {
+            note(seconds, "Step \(step.number): the camera saw \(differs)")
+        }
+        guard stepDone, step.check == .sayDone else { return nil }
+        return finish(at: seconds, how: .camera(seeing), celsius: celsius)
     }
 
     /// Goes back a step, for "go back".

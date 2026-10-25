@@ -25,13 +25,14 @@ final class VoiceController {
     @ObservationIgnored private let guide: ProtocolGuide
     @ObservationIgnored private let disputer: Disputer
     @ObservationIgnored private let diver: DeepDiver
+    @ObservationIgnored private let planner: PagePlanner
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
 
     init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession, guide: ProtocolGuide,
-         disputer: Disputer, diver: DeepDiver) {
+         disputer: Disputer, diver: DeepDiver, planner: PagePlanner) {
         self.canvas = canvas
         self.money = money
         self.asker = asker
@@ -40,6 +41,7 @@ final class VoiceController {
         self.guide = guide
         self.disputer = disputer
         self.diver = diver
+        self.planner = planner
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -182,6 +184,8 @@ final class VoiceController {
             return await disputer.write()
         case .deepDive:
             return await diver.dive()
+        case .whatToDo:
+            return await planner.planFocusedPage()
         case .putAway:
             return canvas.putAway() ? "Put away" : "Nothing to put away"
         case .takeNote(let text):

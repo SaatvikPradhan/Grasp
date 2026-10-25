@@ -24,6 +24,8 @@ enum HoverTarget: Hashable {
     case webFinding(card: UUID, index: Int)
     /// A moment in a video: the frame then and what's said.
     case moment(document: UUID, index: Int)
+    /// A step on a "what to do" card, and the catch on the page it fixes.
+    case planStep(card: UUID, index: Int)
 }
 
 /// Words on a page a card cites, with what they back up.

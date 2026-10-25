@@ -117,6 +117,8 @@ struct CardView: View {
 struct FoldedCardView: View {
     let card: Card
 
+    @Environment(CanvasModel.self) private var canvas
+
     private var isSide: Bool { !card.kind.isPage }
 
     var body: some View {
@@ -143,6 +145,16 @@ struct FoldedCardView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            // What's tucked under it when there are too many groups to show in full.
+            let tucked = canvas.tuckedCount(under: card.id)
+            if tucked > 0 {
+                Text("+\(tucked)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.paper)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.muted))
+            }
         }
     }
 
@@ -192,7 +204,7 @@ struct FoldedCardView: View {
         case .advice: "What to say"
         case .pitch: "The pitch, checked"
         case .temperatures: "Cup temperatures"
-        case .deepDive(let dive): "Deep dive: \(dive.subject.topic)"
+        case .deepDive(let dive): dive.isPlan ? "What to do" : "Deep dive: \(dive.subject.topic)"
         case .notePad(let pad): pad.title
         }
     }
@@ -249,7 +261,9 @@ struct FoldedCardView: View {
         case .pitch(let checks):
             Text("\(checks.count) number\(checks.count == 1 ? "" : "s") checked").foregroundStyle(Theme.muted)
         case .deepDive(let card):
-            if let dive = card.dive {
+            if let dive = card.dive, card.isPlan {
+                Text("\(dive.steps.count) steps · \(dive.findings.count) comparisons").foregroundStyle(Theme.hot)
+            } else if let dive = card.dive {
                 Text("\(dive.findings.count) findings · \(dive.sources.count) sources").foregroundStyle(Theme.muted)
             } else {
                 Text(card.failure == nil ? "searching the web…" : "couldn't search").foregroundStyle(Theme.muted)

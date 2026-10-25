@@ -11,7 +11,7 @@ struct DeepDiveCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("DEEP DIVE · FROM THE WEB")
+                Text(card.isPlan ? "WHAT TO DO · CHECKED AGAINST THE MARKET" : "DEEP DIVE · FROM THE WEB")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.muted)
                 Text(card.subject.topic)
@@ -59,18 +59,47 @@ struct DeepDiveCardView: View {
 
     @ViewBuilder
     private func findings(_ dive: DeepDive) -> some View {
+        if card.isPlan, !dive.findings.isEmpty {
+            Text("HOW IT COMPARES")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.accent)
+        }
         ForEach(Array(dive.findings.enumerated()), id: \.offset) { index, finding in
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle().fill(Theme.accent).frame(width: 5, height: 5).offset(y: -3)
                 (Text(finding.text).foregroundStyle(Theme.ink)
                     + Text(finding.sources.map { " [\($0 + 1)]" }.joined()).foregroundStyle(Theme.accent).bold())
                     .font(.system(size: 13))
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .hoverSource(.webFinding(card: cardID, index: index))
             .onTapGesture { finding.sources.first.flatMap { dive.sources[safe: $0] }.map { NSWorkspace.shared.open($0.url) } }
+        }
+
+        if !dive.steps.isEmpty {
+            Text("WHAT TO DO")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.hot)
+                .padding(.top, 4)
+            ForEach(Array(dive.steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.hot)
+                        .frame(width: 14, alignment: .trailing)
+                    (Text(step.text).foregroundStyle(Theme.ink)
+                        + Text(step.numbersChecked ? "" : "  (amount not on the page)").foregroundStyle(Theme.muted).italic())
+                        .font(.system(size: 13))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .hoverSource(.planStep(card: cardID, index: index))
+            }
         }
 
         if let bottomLine = dive.bottomLine {
@@ -82,6 +111,12 @@ struct DeepDiveCardView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
+                if let math = dive.bottomLineMath {
+                    Text("Worked out by Grasp: \(math)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                }
             }
             .padding(.top, 4)
         }
@@ -93,7 +128,7 @@ struct DeepDiveCardView: View {
                 .padding(.top, 4)
             LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
                       alignment: .leading, spacing: 5) {
-                ForEach(Array(dive.sources.prefix(6).enumerated()), id: \.offset) { index, source in
+                ForEach(Array(dive.sources.prefix(card.isPlan ? 4 : 6).enumerated()), id: \.offset) { index, source in
                     HStack(spacing: 6) {
                         Text("[\(index + 1)]")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -114,6 +149,7 @@ struct DeepDiveCardView: View {
     }
 
     private var footer: String {
+        if card.isPlan, card.dive != nil { return "Hover a step for the line on the page it fixes · click a source to open it" }
         guard let dive = card.dive else { return "Google Search, through Gemini" }
         let searched = dive.searches.first.map { "Searched \u{201C}\($0)\u{201D}" } ?? "Google Search"
         return "\(searched) · click a finding or source to open it"

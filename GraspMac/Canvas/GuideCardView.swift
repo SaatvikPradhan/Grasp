@@ -112,6 +112,17 @@ struct GuideCardView: View {
                     }
                     .frame(width: 440, height: 6)
                 }
+                // What the bench camera sees now: steps the probes can't check finish when it sees them done.
+                if let seeing = guide.seeing {
+                    HStack(spacing: 8) {
+                        Image(systemName: "eye")
+                            .foregroundStyle(Theme.accent)
+                        Text("Grasp sees: \(seeing)")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                    }
+                }
             }
         } else if let run {
             VStack(alignment: .leading, spacing: 6) {
@@ -174,6 +185,7 @@ struct GuideCardView: View {
         case .probe(let text): text.replacingOccurrences(of: "probe ", with: "")
         case .timer: "timer"
         case .said: "you said"
+        case .camera: "camera saw it"
         }
     }
 

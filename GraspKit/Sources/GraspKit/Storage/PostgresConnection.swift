@@ -12,6 +12,10 @@ public struct PostgresAddress: Equatable, Sendable {
     public var password: String
     /// Tiger Cloud requires TLS; a local test database may not offer it.
     public var requiresTLS = true
+    /// Check the server's certificate against the system's trusted ones, as `sslmode=verify-ca` or
+    /// `verify-full` ask. Tiger Cloud signs with its own authority, which macOS doesn't know, so its
+    /// connection strings say `sslmode=require`: encrypted, certificate not checked (as psql does).
+    public var verifiesCertificate = false
 
     public init(host: String, port: Int = 5432, database: String, user: String, password: String, requiresTLS: Bool = true) {
         self.host = host
@@ -23,7 +27,7 @@ public struct PostgresAddress: Equatable, Sendable {
     }
 
     /// Reads `user:password@host:port/database`, with or without `postgres://` in front and
-    /// `?sslmode=…` after. `sslmode=disable` turns TLS off.
+    /// `?sslmode=…` after. `sslmode=disable` turns TLS off; `verify-ca` and `verify-full` check the certificate.
     public init?(_ string: String) {
         var rest = string.trimmingCharacters(in: .whitespaces)
         for scheme in ["postgresql://", "postgres://"] where rest.hasPrefix(scheme) { rest.removeFirst(scheme.count) }
@@ -48,6 +52,7 @@ public struct PostgresAddress: Equatable, Sendable {
             port = 5432
         }
         requiresTLS = !options.contains("sslmode=disable")
+        verifiesCertificate = options.contains("sslmode=verify-ca") || options.contains("sslmode=verify-full")
         guard !host.isEmpty, !database.isEmpty, !user.isEmpty else { return nil }
     }
 }
@@ -136,8 +141,9 @@ public final class PostgresConnection: @unchecked Sendable {
         if address.requiresTLS {
             try send(Message.sslRequest)
             guard try readBytes(1).first == UInt8(ascii: "S") else { throw Failure.tlsRefused }
-            // Start TLS on the open socket, checking the certificate against the host name.
-            let settings = [kCFStreamSSLPeerName as String: address.host] as CFDictionary
+            // Start TLS on the open socket, naming the host, and checking its certificate if asked.
+            let settings = [kCFStreamSSLPeerName as String: address.host,
+                            kCFStreamSSLValidatesCertificateChain as String: address.verifiesCertificate] as CFDictionary
             input.setProperty(StreamSocketSecurityLevel.negotiatedSSL, forKey: .socketSecurityLevelKey)
             output.setProperty(StreamSocketSecurityLevel.negotiatedSSL, forKey: .socketSecurityLevelKey)
             CFReadStreamSetProperty(input as CFReadStream, CFStreamPropertyKey(kCFStreamPropertySSLSettings), settings)

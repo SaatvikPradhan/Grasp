@@ -35,7 +35,8 @@ struct CanvasView: View {
                     .allowsHitTesting(false)
             }
 
-            ForEach(model.cards) { card in
+            ForEach(model.drawOrder) { card in
+                let isTucked = model.tuckedChips.contains(card.id)
                 CardView(
                     card: card,
                     isHeld: model.isHeld(card.id),
@@ -60,6 +61,33 @@ struct CanvasView: View {
                             .onChanged { model.mouseDrag(card.id, translation: $0.translation) }
                             .onEnded { _ in model.endMouseDrag() }
                     )
+                    // Tucked under its page's chip until the group opens.
+                    .opacity(isTucked ? 0 : 1)
+                    .allowsHitTesting(!isTucked)
+            }
+
+            if let overflow = model.chipOverflow {
+                let label = Label("\(overflow.pages.count) earlier page\(overflow.pages.count == 1 ? "" : "s")", systemImage: "square.stack.3d.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Group {
+                    if isSnapshot {
+                        label   // offscreen rendering can't draw a menu
+                    } else {
+                        Menu {
+                            ForEach(overflow.pages.reversed()) { page in
+                                Button(page.title) { model.focus(page.id) }
+                            }
+                        } label: { label }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.visible)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(width: overflow.frame.width, height: overflow.frame.height, alignment: .leading)
+                .background(Capsule().fill(Theme.surface))
+                .overlay(Capsule().stroke(Theme.line))
+                .position(x: overflow.frame.midX, y: overflow.frame.midY)
             }
 
             header

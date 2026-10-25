@@ -34,9 +34,24 @@ public struct DeepDive: Equatable, Sendable {
         public var sources: [Int]
     }
 
+    /// Something to do, for a plan: which problem on the page it fixes, and whether its numbers
+    /// are the page's own (or a source's).
+    public struct Step: Equatable, Sendable {
+        public var text: String
+        public var sources: [Int]
+        /// The catch on the page it's about, from 0, in `PageReading.allCatches`.
+        public var catchIndex: Int?
+        public var numbersChecked: Bool
+    }
+
     public var findings: [Finding]
+    /// Steps to take, for a plan; empty for a deep dive.
+    public var steps: [Step] = []
     /// One sentence: what it means for the reader.
     public var bottomLine: String?
+    /// For a plan: how Swift gets the bottom line's amount from the steps' amounts ("$10.00 + $7.00"),
+    /// or nil when it doesn't add up from them.
+    public var bottomLineMath: String?
     /// Only the pages some finding cites, numbered in the order they're first cited.
     public var sources: [Source]
     /// What was searched for.
@@ -86,29 +101,48 @@ public struct DeepDiveFinder: Sendable {
             }
             let text = trimmed.drop { "-*•".contains($0) || $0 == " " }.trimmingCharacters(in: .whitespaces)
             guard text.count > 12 else { continue }
-            let pages = grounded.supports
-                .filter { support in
-                    let piece = support.text.trimmingCharacters(in: .whitespaces).drop { "-*•".contains($0) || $0 == " " }
-                    return !piece.isEmpty && (text.contains(piece) || piece.contains(text))
-                }
-                .flatMap(\.pages)
-            raw.append((String(text), pages.reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }))
+            raw.append((String(text), SourceNumbering(grounded).pages(for: String(text))))
         }
         let sourced = raw.filter { !$0.pages.isEmpty }
         let kept = (sourced.isEmpty ? raw : sourced).prefix(5)
 
-        // Number the sources in the order the findings first cite them, one number to a site.
-        var sources: [DeepDive.Source] = []
-        let findings = kept.map { finding in
-            let numbers = finding.pages.compactMap { page -> Int? in
-                guard grounded.pages.indices.contains(page), let url = URL(string: grounded.pages[page].url) else { return nil }
-                let site = grounded.pages[page].title.isEmpty ? (url.host ?? "web") : grounded.pages[page].title
-                if let at = sources.firstIndex(where: { $0.site == site }) { return at }
-                sources.append(.init(site: site, url: url))
-                return sources.count - 1
-            }
-            return DeepDive.Finding(text: finding.text, sources: numbers.reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } })
+        var numbering = SourceNumbering(grounded)
+        let findings = kept.map { DeepDive.Finding(text: $0.text, sources: numbering.numbers(forPages: $0.pages)) }
+        return DeepDive(findings: findings, bottomLine: bottomLine, sources: numbering.sources, searches: grounded.searches)
+    }
+}
+
+/// Numbers a grounded answer's web pages in the order lines first cite them, one number to a site.
+struct SourceNumbering {
+    let grounded: Grounded
+    private(set) var sources: [DeepDive.Source] = []
+
+    init(_ grounded: Grounded) {
+        self.grounded = grounded
+    }
+
+    /// The pages (indexes into `grounded.pages`) whose supported text is part of `line`.
+    func pages(for line: String) -> [Int] {
+        let pages = grounded.supports.filter { support in
+            let piece = support.text.trimmingCharacters(in: .whitespaces).drop { "-*•".contains($0) || $0 == " " }
+            return !piece.isEmpty && (line.contains(piece) || piece.contains(line))
         }
-        return DeepDive(findings: findings, bottomLine: bottomLine, sources: sources, searches: grounded.searches)
+        .flatMap(\.pages)
+        return pages.reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
+    }
+
+    mutating func numbers(for line: String) -> [Int] {
+        numbers(forPages: pages(for: line))
+    }
+
+    mutating func numbers(forPages pages: [Int]) -> [Int] {
+        let numbers = pages.compactMap { page -> Int? in
+            guard grounded.pages.indices.contains(page), let url = URL(string: grounded.pages[page].url) else { return nil }
+            let site = grounded.pages[page].title.isEmpty ? (url.host ?? "web") : grounded.pages[page].title
+            if let at = sources.firstIndex(where: { $0.site == site }) { return at }
+            sources.append(.init(site: site, url: url))
+            return sources.count - 1
+        }
+        return numbers.reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
     }
 }

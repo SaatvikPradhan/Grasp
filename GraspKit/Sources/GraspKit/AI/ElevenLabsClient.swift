@@ -24,7 +24,8 @@ public struct ElevenLabsClient: Sendable {
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "model_id": Self.model])
+        // The fast model misreads digits ("$27,956", "8.9%"), so numbers go in as words.
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": SpokenText.words(text), "model_id": Self.model])
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0

@@ -40,6 +40,8 @@ public enum VoiceCommand: Equatable, Sendable {
     case writeDispute
     /// Look up what the web says about the thing pointed at.
     case deepDive
+    /// What to do about the page in focus: how it compares, and steps to fix it.
+    case whatToDo
     /// Put the card in focus away into its group, like a thumbs up.
     case putAway
     /// Add a line to the notes beside the page in focus.
@@ -103,6 +105,7 @@ public struct VoiceCommander: Sendable {
         case "find_related_work": return .findRelatedWork
         case "write_dispute": return .writeDispute
         case "deep_dive": return .deepDive
+        case "what_to_do": return .whatToDo
         case "put_away": return .putAway
         case "take_note": return call.text("text").map { .takeNote($0) } ?? .none
         case "fit_model": return .comingSoon("fit it")
@@ -134,6 +137,7 @@ public struct VoiceCommander: Sendable {
                  ["move": ["type": "STRING", "enum": ["next", "back", "again"], "description": "next when a step is done, back to go back, again to repeat it"]]),
         function("write_dispute", "Write a letter disputing the wrong charges on a bill, for example 'write a dispute', 'help me get my money back', 'complain about this bill'."),
         function("deep_dive", "Look up what sources on the web say about the thing pointed at or the card in focus, for example 'deep dive', 'look this up', 'what do other sources say?', 'is this normal?'."),
+        function("what_to_do", "Work out what to do about the page: how it compares with the market and steps to fix its problems, for example 'what should I do about this bill', 'is this a good deal', 'am I overpaying', 'how do I fix this'."),
         function("put_away", "Put the card in focus away to the side, for example 'put it away', 'done with this', 'move this aside'."),
         function("take_note", "Write down a note about the page, for example 'take a note: ask about the late fee', 'note that the promo ends in June', 'write down call them Monday'.",
                  ["text": ["type": "STRING", "description": "The note itself, without 'take a note'"]]),

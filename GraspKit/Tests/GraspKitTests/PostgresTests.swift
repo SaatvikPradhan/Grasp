@@ -27,6 +27,8 @@ struct PostgresTests {
         #expect(address.port == 34567)
         #expect(address.database == "tsdb")
         #expect(address.requiresTLS)
+        #expect(!address.verifiesCertificate)   // Tiger's own authority isn't one macOS trusts
+        #expect(PostgresAddress("u:p@db.example.com:5432/app?sslmode=verify-full")?.verifiesCertificate == true)
         // Without the scheme, as Secrets.xcconfig needs it (it reads // as a comment).
         #expect(PostgresAddress("tsdbadmin:secret@abc.example.com:5432/tsdb")?.host == "abc.example.com")
         #expect(PostgresAddress("postgres:pw@localhost:5432/postgres?sslmode=disable")?.requiresTLS == false)

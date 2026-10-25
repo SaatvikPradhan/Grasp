@@ -17,6 +17,12 @@ struct VoiceBar: View {
                     Text("Taking lab notes \(clockTime(lab.elapsed))")
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.warn)
+                    // What it just heard, so you can see the mic is working.
+                    Text(lab.lastHeard.isEmpty ? "listening…" : "\u{201C}\(lab.lastHeard)\u{201D}")
+                        .font(.system(size: 12).italic())
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .frame(maxWidth: 260, alignment: .leading)
                 }
                 .padding(.trailing, 4)
             }

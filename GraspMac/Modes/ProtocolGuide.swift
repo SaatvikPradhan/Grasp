@@ -14,6 +14,8 @@ final class ProtocolGuide {
     private(set) var lastRun: ProtocolRun?
     private(set) var elapsed = 0.0
     private(set) var isReading = false
+    /// What the bench camera sees now, for the card.
+    private(set) var seeing: String?
     /// The protocol on the canvas, ready to run.
     private(set) var ready: (lab: LabProtocol, documentID: UUID)?
 
@@ -25,6 +27,10 @@ final class ProtocolGuide {
     @ObservationIgnored private let voiceOut: VoiceOut
     @ObservationIgnored private var started = Date()
     @ObservationIgnored private var ticker: Task<Void, Never>?
+    @ObservationIgnored private var watcher: Task<Void, Never>?
+    /// The last look: which step it was on, the frame it looked at, and what it said, so a step
+    /// finishes, or a mistake is spoken, only when two looks in a row agree.
+    @ObservationIgnored private var lastLook: (step: Int, frame: Double, done: Bool, differs: String?)?
 
     init(canvas: CanvasModel, probes: ProbeHub, lab: LabSession, voiceOut: VoiceOut) {
         self.canvas = canvas
@@ -68,6 +74,15 @@ final class ProtocolGuide {
             while !Task.isCancelled {
                 self?.tick()
                 try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+        seeing = nil
+        lastLook = nil
+        watcher?.cancel()
+        watcher = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.lookEvery))
+                await self?.look()
             }
         }
         announce()
@@ -116,10 +131,42 @@ final class ProtocolGuide {
         guard let run else { return await lab.stop() }
         ticker?.cancel()
         ticker = nil
+        watcher?.cancel()
+        watcher = nil
+        seeing = nil
         let record = ProtocolRecord(run)
         lastRun = run
         self.run = nil
         return await lab.stop(protocol: record)
+    }
+
+    // MARK: Watching
+
+    /// Seconds between looks at the bench.
+    static let lookEvery = 5.0
+
+    /// Looks at the newest bench frame against the current step. A step the probes can't check
+    /// finishes when two looks in a row see it done; something done differently from the page is
+    /// said out loud and noted when two looks in a row see it.
+    private func look() async {
+        guard let run, let step = run.step, let frame = lab.latestFrame, frame.seconds != lastLook?.frame,
+              let client = GeminiClient.fromAppKeys else { return }
+        let index = run.current
+        let next = run.lab.steps.indices.contains(index + 1) ? run.lab.steps[index + 1] : nil
+        guard let seen = try? await BenchWatcher(client: client).look(at: frame.jpeg, step: step, next: next),
+              var current = self.run, current.current == index else { return }
+        seeing = seen.seeing
+        let agreed = lastLook.map { $0.step == index } ?? false
+        let differs = agreed && seen.differs != nil && seen.differs == lastLook?.differs ? seen.differs : nil
+        let done = agreed && seen.stepDone && lastLook?.done == true
+        lastLook = (index, frame.seconds, seen.stepDone, seen.differs)
+        let before = current.deviations.count
+        let finishedStep = current.cameraSaw(seen.seeing, stepDone: done, differs: differs, at: now, celsius: celsius)
+        self.run = current
+        if current.deviations.count > before, let differs {
+            Task { await voiceOut.say("Heads up: \(differs)") }
+        }
+        if let finishedStep { finished(finishedStep) }
     }
 
     // MARK: Working

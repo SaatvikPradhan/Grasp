@@ -19,6 +19,7 @@ struct GraspMacApp: App {
     @State private var diver: DeepDiver
     @State private var tiger: TigerStore
     @State private var videos: VideoStudy
+    @State private var planner: PagePlanner
 
     init() {
         let canvas = CanvasModel()
@@ -41,10 +42,12 @@ struct GraspMacApp: App {
         _probes = State(initialValue: probes)
         _tiger = State(initialValue: TigerStore(probes: probes))
         _videos = State(initialValue: VideoStudy(canvas: canvas))
+        let planner = PagePlanner(canvas: canvas)
+        _planner = State(initialValue: planner)
         _asker = State(initialValue: asker)
         _researcher = State(initialValue: researcher)
         _lab = State(initialValue: lab)
-        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab, guide: guide, disputer: disputer, diver: diver))
+        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab, guide: guide, disputer: disputer, diver: diver, planner: planner))
     }
 
     var body: some Scene {
@@ -54,10 +57,11 @@ struct GraspMacApp: App {
                 .task {
                     phone.onCapture = { [paper] id, jpeg in paper.read(jpeg: jpeg, captureID: id) }
                     paper.onHighlights = { [phone] id, boxes in phone.sendHighlights(boxes, for: id) }
-                    paper.onPage = { [researcher, guide, tiger] document in
+                    paper.onPage = { [researcher, guide, tiger, planner] document in
                         researcher.pageRead(document)
                         guide.pageRead(document)
                         tiger.save(page: document)
+                        planner.pageRead(document)
                     }
                     videos.onPage = { [tiger] document in tiger.save(page: document) }
                     hands.onHands = { [voice] hands in voice.handsChanged(hands) }
@@ -135,6 +139,8 @@ struct GraspMacApp: App {
                 Button("Show Cup Temperatures") { canvas.toggleTemperatures() }
             }
             CommandMenu("Money") {
+                Button("What to Do About This Page") { Task { await planner.planFocusedPage() } }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
                 Button("Write the Dispute") { Task { await disputer.write() } }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
                 Button("Copy the Dispute Letter") { disputer.copy() }
@@ -220,11 +226,20 @@ struct GraspMacApp: App {
                         canvas.showSource(of: .passage(card: card.id, index: index))
                     }
                 case "lab": await lab.rehearse()
+                case "labstart": _ = lab.start()
+                case "labstop": _ = await lab.stop()
                 case "guide": guide.start()
                 case "method": await researcher.mapMethod()
                 case "related": await researcher.findRelatedWork()
                 case "dispute": await disputer.write()
                 case "dive": await diver.dive()
+                case "plan": await planner.planFocusedPage()
+                case let step where step.hasPrefix("hoverplan"):
+                    // hoverplan2: the second step of the newest "what to do" card.
+                    let index = (Int(step.dropFirst(9)) ?? 1) - 1
+                    if let card = canvas.cards.last(where: { if case .deepDive(let dive) = $0.kind { dive.isPlan } else { false } }) {
+                        canvas.showSource(of: .planStep(card: card.id, index: index))
+                    }
                 case let step where step.hasPrefix("hoverwork"):
                     // hoverwork2: the second paper on the related-work card.
                     let index = (Int(step.dropFirst(9)) ?? 1) - 1
@@ -293,6 +308,8 @@ struct GraspMacApp: App {
                 case let step where step.hasPrefix("note:"):
                     // note:text adds a line to the pad beside the page in focus.
                     canvas.showNotePad(adding: String(step.dropFirst(5)))
+                case "editnotes":
+                    if let card = canvas.cards.last(where: { if case .notes = $0.kind { true } else { false } }) { canvas.editNotes(card.id) }
                 case "checknotes":
                     if let pad = canvas.cards.last(where: { if case .notePad = $0.kind { true } else { false } }) {
                         await researcher.checkNotePad(pad.id)

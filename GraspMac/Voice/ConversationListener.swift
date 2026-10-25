@@ -11,6 +11,10 @@ final class ConversationListener {
 
     /// Called with the current session's transcript every time it grows.
     @ObservationIgnored var onText: ((String) -> Void)?
+    /// Called as each new session starts, when the transcript starts over from nothing.
+    @ObservationIgnored var onNewSession: (() -> Void)?
+    /// Words to listen for, so they win over sound-alikes ("cup A", not "cupcake").
+    @ObservationIgnored var contextualStrings: [String] = []
 
     @ObservationIgnored private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     @ObservationIgnored private let engine = AVAudioEngine()
@@ -55,6 +59,8 @@ final class ConversationListener {
         guard isOn, let recognizer else { return }
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.contextualStrings = contextualStrings
+        onNewSession?()
         feed.swap(request)?.endAudio()
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let text = result?.bestTranscription.formattedString

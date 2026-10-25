@@ -9,6 +9,8 @@ import Observation
 final class LabSession {
     private(set) var isRecording = false
     private(set) var isWriting = false
+    /// The last few words heard, shown while recording so you can see it's listening.
+    private(set) var lastHeard = ""
     /// Seconds since recording started.
     private(set) var elapsed = 0.0
 
@@ -28,6 +30,13 @@ final class LabSession {
     /// A frame every this many seconds.
     static let frameEvery = 4
 
+    /// The newest bench frame while recording, for the guided run to look at.
+    var latestFrame: LabRecording.Frame? { isRecording ? frames.last : nil }
+
+    /// What people say at the bench, so "cup A" isn't heard as "cupcake".
+    static let benchWords = ["cup A", "cup B", "cup C", "lid", "lid on", "lid off", "ice", "ice cubes", "pour", "pouring",
+                             "probe", "degrees", "Celsius", "stir", "timer", "Grasp", "done", "next step"]
+
     init(canvas: CanvasModel, probes: ProbeHub, phone: PhoneLink, hands: HandPipeline) {
         self.canvas = canvas
         self.probes = probes
@@ -44,9 +53,13 @@ final class LabSession {
         started = Date()
         elapsed = 0
         isRecording = true
+        lastHeard = ""
+        listener.contextualStrings = Self.benchWords
+        listener.onNewSession = { [weak self] in self?.transcript.endSession() }
         listener.onText = { [weak self] text in
             guard let self else { return }
             transcript.heard(text, at: Date().timeIntervalSince(started))
+            lastHeard = text.split(separator: " ").suffix(8).joined(separator: " ")
         }
         let micProblem = listener.start()
         ticker = Task { [weak self] in
@@ -68,6 +81,11 @@ final class LabSession {
         isRecording = false
         let recording = LabRecording(frames: frames, speech: transcript.lines(), readings: readings, duration: elapsed,
                                      protocolRecord: record)
+        // Snapshot runs keep what was heard, to check the listener.
+        if let path = ProcessInfo.processInfo.environment["GRASP_SNAPSHOT"] {
+            try? recording.speech.map { "\(clockTime($0.seconds))  \($0.text)" }.joined(separator: "\n")
+                .write(toFile: path + "-transcript.txt", atomically: true, encoding: .utf8)
+        }
         return await write(recording, rehearsal: false)
     }
 

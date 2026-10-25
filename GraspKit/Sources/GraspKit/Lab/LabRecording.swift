@@ -61,9 +61,15 @@ public struct TranscriptBuilder: Sendable {
 
     public init() {}
 
+    /// The recognizer starts each session over from nothing: keep what the last one heard.
+    public mutating func endSession() {
+        if !current.isEmpty { finished.append(current) }
+        current = []
+    }
+
     public mutating func heard(_ text: String, at seconds: Double) {
         let words = text.split(separator: " ").map(String.init)
-        // A new recognition session starts over with a much shorter text.
+        // A new session the listener didn't announce starts over with a much shorter text.
         if current.count >= 3, words.count < current.count / 2 {
             finished.append(current)
             current = []

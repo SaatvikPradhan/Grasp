@@ -41,7 +41,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 - At least one prize: **94%**. At least one cash prize: **84%**. Prize money if it wins every entered track (team of 4): **$5,396**.
 - Assumptions: top-tier build; 40 / 12 / 10 / 25 teams with working demos in Grand / FNB / Research / Nittany AI; Plackett–Luce model, strength = fit × execution × build ease × demo. These are judgment-based estimates, useful for comparing ideas, not exact odds.
 
-**MLH side prizes** (not in the odds): Gemini (use for every AI call), ElevenLabs (Grasp's voice), Tiger Data (store sessions and readings), Vultr (host share links), GoDaddy Registry (domain), DEV writing challenge ($100, post after the event).
+**MLH side prizes** (not in the odds): Gemini (use for every AI call), ElevenLabs (Grasp's voice), Tiger Data (store sessions and readings), GoDaddy Registry (domain), DEV writing challenge ($100, post after the event). Vultr is not entered: its only job was hosting share links, which were dropped.
 
 **Deadline:** last fall, Devpost was due **12:00 PM Sunday**. Confirm this year's time at the help desk.
 
@@ -65,13 +65,14 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Your notes, checked** | Hand it a paper, then your notes: each note is linked to its passage and marked matches / differs / not in the paper, with research directions grounded in what the paper leaves open | `NoteLinker`, `Researcher`; ⌘⇧N or "these are my notes" |
 | **Lab notes** | While recording: camera frames, speech and probe readings. Stopping writes the notebook: each step with what was said and what its probe did then, how they connect, what to try next; ⌘⇧E saves it with Methods, CSV, transcript and frames | `SensorTrace`, `LabNotebookWriter`, `LabSession`; ⌘⇧R or "start lab notes" |
 | **Paper → live model** | A paper's equation and each condition's rate, traced to the page, run in Swift; twist k, swipe the condition; every reported result re-derived from the paper's own k; push into the cup chart to fit your cups' k with an error bar | `ModelReader`, `PaperModel`, `FittedRate`; ⌘⇧B compares your cups |
-| **Guided protocol** | Hand it a protocol and say "I'm starting the experiment": each step read aloud, the probes confirm pours, waits and drops, every step timed, anything done differently from the page noted, and the notebook gets the protocol table | `ProtocolReader`, `ProtocolRun`, `ProtocolGuide`; ⌘⇧G, "done", ⌘⏎ |
+| **Guided protocol** | Hand it a protocol and say "I'm starting the experiment": each step read aloud, the probes confirm pours, waits and drops, the bench camera confirms what the probes can't (two looks in a row) and says when something's done differently, every step timed, and the notebook gets the protocol table | `ProtocolReader`, `ProtocolRun`, `ProtocolGuide`, `BenchWatcher`; ⌘⇧G, "done", ⌘⏎ |
 | **Method map** | The Methods as a diagram: what was varied, measured, held the same and not controlled, how it was analysed, how many trials, each box tied to its sentence | `MethodReader`; ⌘⇧M or "map the method" |
 | **Related work** | Real OpenAlex papers closest to this one, and for each direction "studied", "partly" or "looks open", judged only against papers the search returned | `RelatedWorkFinder`, `OpenAlexClient`; ⌘⇧F or "has anyone done this?" |
 | **Write the dispute** | From a bill to a letter: each error with an amount Swift works out from numbers printed on the bill, a total to get back, charges worth asking about kept out of the total | `DisputeWriter`, `Disputer`; ⌘⇧W, ⌘⇧C copies it |
 | **Deep dive** | Zoom into anything with both hands (a fee, a clause, a result, a whole card): Gemini with Google Search writes findings, and only findings a web page backs are kept, each with numbered sources | `DeepDiveFinder`, `DeepDiver`; two-hand zoom, ⌘⇧D, "look this up" |
 | **Notes on the canvas** | A note pad beside the page in focus, one note per line; "Check" links each to the page and marks matches / differs / not in it; "take a note…" adds a line by voice | `NotePadCardView`, `NoteLinker`; ⌘⇧N |
 | **Videos, for study** | A lecture file or YouTube link becomes a page: a timestamped transcript, moments to jump to, facts at the second they're said (kept only if the words are in the transcript). Notes typed while it plays get the time; checked notes link to their moment | `VideoReader`, `VideoStudy`, `VideoPlayers`; ⌘O, ⌘⇧Y |
+| **What to do** | Every page with money on it, as soon as it's read: how it compares with what's typical right now (web, each line sourced), steps that fix its catches (hover a step for the line it fixes), and a bottom line Swift adds up from the steps | `ActionPlanner`, `PagePlanner`; automatic, ⌘⇧A, "is this a good deal?" |
 | **Kept in Tiger Data** | Pages, answers, checked notes, deep dives and lab notebooks as rows; probe readings every few seconds in a TimescaleDB hypertable | `PostgresConnection` (TLS, SCRAM, no packages), `TigerRecords`, `TigerStore`; `TIGER_SERVICE` |
 
 **How it works (built Oct 24):** every page goes to three readers at once: `OfferReader` (car offers: drives the loan, compare and what-to-say cards), `PageReader` (any page: kind, summary, up to 12 facts and 5 catches with exact quotes, and a model whose inputs Swift checks are really on the page), and Vision (where each line is). `SourceLocator` matches each quote to its line, so every fact, catch and answer source has a box on the photo. Computed numbers (totals, payments) hover as their formula, each input traced to its words on the page. Answers use Swift calculator tools (`loan_payment`, `payoff_months`, `total_cost`, `arithmetic`) and are marked unchecked if any number can't be traced. The canvas starts empty ("Hand Grasp anything"); ⌘R lays out the demo cards.
@@ -117,12 +118,11 @@ Built (Oct 24), through the same engine: **notes against a paper** (each note li
 - **[Demo] Figure to data.** Hold up a figure from a paper or textbook; its points come out as data to overlay.
 - **[Demo] Equation to live model.** Hold up an equation; twist to set parameters; "fit it" runs least squares with error bars.
 - **[Demo] Compare runs.** Push two charts together: your run vs the paper, today vs yesterday.
-- **[Demo] Reproducible export.** Notebook (log, data, figures, fit) + CSVs + Jupyter file that reruns the analysis + **Methods paragraph and figure caption** written from the log.
+- **[Demo] Reproducible export.** Notebook (log, data, figures, fit) + CSVs + **Methods paragraph and figure caption** written from the log.
 - **[Demo] The notebook writes itself.** Camera logs meaningful actions (poured, lid on, stirred) with a thumbnail and a chart marker.
 - **[If time] Reads any display.** Point the phone at a scale, multimeter or pH meter.
 - **[If time] Ask your data.** "When did it drop below 40 degrees?" Answer plus marker.
 - **[If time] Cites what you showed it.** Reads title or DOI, adds citation via OpenAlex.
-- **[Next] Replay.** Scrub the timeline: bench photo and data at the same moment. (Build if time; strong for research judges.)
 
 ### Money mode
 Built (Oct 24): offer reader, add-ons merged across contract and sticker, true-cost chart, twist, compare, hears the pitch (consent prompt, `PitchChecker`), what to say (Gemini wording checked against Swift's numbers, read aloud by ElevenLabs), decision summary PDF (⌘E). Money menu: ⌘J what to say, ⌘⇧L listen to the salesperson. Oct 25: **write the dispute** (⌘⇧W): on the sample phone bill, $42.00 to get back ($10 total that doesn't add up, $25 promo not applied, $7 late fee on an on-time payment), with the protection plan and recovery fee asked about but kept out of the total.
@@ -135,7 +135,6 @@ Built (Oct 24): offer reader, add-ons merged across contract and sticker, true-c
 - **[Demo] Hears the pitch.** With consent, pins spoken numbers and checks them against the paper ("$388 a month, but for 72 months").
 - **[Demo] What to say.** Short list of questions, read aloud.
 - **[Demo] Decision summary.** One page with numbers, sources, the choice.
-- **[If time] Pressure check.** Flags "this price ends today"; phone buzzes with a calm reminder.
 - **[If time] Rate check.** Compare APR with Federal Reserve averages from FRED.
 - **[If time] Chart check.** Hold up a fund ad; flag a cherry-picked window; show full history.
 - **[Next] Savings planner.** Income and costs; twist to see when you reach a goal.
@@ -186,7 +185,7 @@ The Research track asks for a tool that removes a bottleneck. Grasp removes seve
 3. **0:50 Run it.** Hand it the protocol and say "I'm starting the experiment." Grasp reads each step aloud. Pour into A, B (lid on) and C: the probes confirm each pour and the step ticks off with its time.
 4. **1:40 Your cups against the paper.** Push the model into the live cup chart. "Cup B: k 0.019 ± 0.002, closest Paper, lid (0.019): consistent." Reproducing a result, live.
 5. **2:10 Write it up.** Ice into C, finish the protocol: the notebook writes itself with the protocol table, what was said, and what each probe did. Hand Grasp a page of notes on the paper: 4 of 8 differ from it.
-6. **2:40 What's next.** "Has anyone done this?" Real papers from OpenAlex; "measuring evaporation: looks open". Judges scan a QR to open the notebook.
+6. **2:40 What's next.** "Has anyone done this?" Real papers from OpenAlex; "measuring evaporation: looks open". ⌘⇧E saves the notebook folder to show them.
 
 **Backup experiment:** the same flow with ice and salt (freezing-point depression), or the scripted rehearsal session if hot water isn't allowed at the table.
 
@@ -213,11 +212,10 @@ Grasp/
 │  ├─ Hardware/           SerialPort, ProbeSource (+ SimulatedProbeSource), LEDStrip, ReceiptPrinter
 │  ├─ Modes/              PaperReader + PageText (Gemini reads, Vision boxes), PaperPanel; ResearchMode, MoneyMode next
 │  ├─ Bench/              CupColorTimer (pixel averages per mat circle), ActionLogger
-│  └─ Export/             NotebookExporter (MD, CSV, .ipynb, Methods), SummaryPDF, QR
+│  └─ Export/             NotebookExporter (MD, CSV, Methods), SummaryPDF
 ├─ GraspPhone/            iOS app (the eye)
 │  ├─ CameraView (+ scan result with highlights), FrameSender (~4 fps live + sharp capture), PhoneModel
-│  ├─ HighlightOverlay (boxes sent back from the Mac), FlingDetector (hold still on the paper, then flick the top away; Flick on/off button)
-│  └─ PressureBuzz (haptics on message)
+│  └─ HighlightOverlay (boxes sent back from the Mac), FlingDetector (hold still on the paper, then flick the top away; Flick on/off button)
 └─ firmware/              Arduino or ESP32 sketch
 ```
 
@@ -229,7 +227,7 @@ Grasp/
 - Built so far (`GraspKit/Link`): `frame(LinkFrame)` and `received(frameID, sentAt)`, as binary plists (JPEG bytes stay raw). Add the rest as features need them.
 - Planned messages:
   - Phone → Mac: `hello(device)`, `frame(jpeg, ts, purpose: live|capture)`, `fling(captureId)`
-  - Mac → Phone: `highlights([{text, rect, kind: term|addon}])`, `buzz(message)`, `status(text)`
+  - Mac → Phone: `highlights([{text, rect, kind: term|addon}])`, `status(text)`
 - **Fallbacks:** Continuity Camera (zero iPhone code; Desk View shows the table from above), then the phone's hotspot + a small local WebSocket.
 
 ### Serial protocol (USB, 115200 baud, one line per message)
@@ -254,8 +252,8 @@ Use `gemini-3.5-flash-lite` with `thinkingLevel: minimal` and a response schema 
 - **Action logger efficiency:** only call Gemini when on-device hand tracking sees a hand near an object.
 
 ### Exports and sharing
-- Notebook (Markdown → PDF), CSVs, `.ipynb` (load CSV, fit, plot), Methods paragraph, decision summary.
-- QR codes with Core Image `CIQRCodeGenerator`. Host share pages on a small Vultr server under your domain. Store sessions and readings in Tiger Data (Postgres) or local SQLite first.
+- Notebook (Markdown → PDF), CSVs, Methods paragraph, decision summary.
+- Sessions and readings are kept in Tiger Data (`TigerStore`, service `db-48468`); see CLAUDE.md for the queries.
 
 ---
 
@@ -344,17 +342,19 @@ Hours count from when you start. Live checklist with clock times: https://claude
 - **8:00–12:00 Money mode** — contract → loan model in Swift · add-on flags (contract + window sticker) · true-cost chart, twist the term, push in credit union quote · spoken-number check · "what to say" with ElevenLabs · one-page summary
 - **12:00–13:00 Rehearse FNB** — full 90 s FNB script with props; 30 s Grand opener
 - **13:00–18:00 Research mode** — firmware (3 probes out, LED commands in) · Mac serial reader → live charts · paper → live model + cup comparison · guided protocol · lab notebook with Methods and export · method map · related work · rehearse the cooling-cups run with real hot water
-- **18:00–21:00 Wow layer (in this order)** — LED cup flashes + money meter · receipt printer · replay scrubber · pressure-alert buzz · QR share links on your domain
-- **21:00–24:00 Freeze, rehearse, submit** — feature freeze · demo-mode hotkeys that load the last good run of each act (labeled as replay) · rehearse each script 10× · backup video of every demo · Devpost (tagline, video < 2 min, screenshots, all four tracks + MLH categories) · practice 3 pitches · pack and charge everything
+- **18:00–21:00 Wow layer (in this order)** — LED cup flashes + money meter · receipt printer
+- **21:00–24:00 Freeze, rehearse, submit** — feature freeze · rehearse each script 10× · backup video of every demo · Devpost (tagline, video < 2 min, screenshots, all four tracks + MLH categories) · practice 3 pitches · pack and charge everything
 
 **Sleep:** if you sleep, take 90 minutes after Research mode and cut from the wow layer. Never before the gates pass.
 
 ### Cut order if behind
-1. Chart merging (show side by side) → 2. Replay scrubber → 3. Pressure alert (say it aloud) → 4. Receipt printer (page + QR) → 5. Textbook figure act → 6. Voice (big on-screen text).
+1. Chart merging (show side by side) → 2. Receipt printer (show the summary PDF instead) → 3. Textbook figure act → 4. Voice (big on-screen text).
+
+**Dropped (Oct 25):** QR share links (and with them Vultr), demo-mode replay hotkeys, the replay scrubber, the Jupyter export, the pressure buzz on the phone.
 **Never cut:** the hands, the live probe chart, contract reading, the twist.
 
 ### Top upgrades (impact for effort)
-1. Hand the judge the controls (free) · 2. Fling to send (1 h) · 3. Reaction snaps on cue with LED flash · 4. Notebook writes itself (2 h) · 5. Methods section in one click (30 min) · 6. Money meter LED (1 h) · 7. The Real Receipt (2 h) · 8. Replay (2 h) · 9. Pressure alert (1 h) · 10. QR links on your domain (1 h)
+1. Hand the judge the controls (free) · 2. Fling to send (1 h) · 3. Reaction snaps on cue with LED flash · 4. Notebook writes itself (2 h) · 5. Methods section in one click (30 min) · 6. Money meter LED (1 h) · 7. The Real Receipt (2 h)
 
 ---
 
@@ -368,8 +368,8 @@ Hours count from when you start. Live checklist with clock times: https://claude
 | Hall noise breaks voice | AirPods mic + push-to-talk key |
 | Hot water not allowed at the table | Ice and salt version, same probes and flow; or the simulated bench (Bench menu) with the same steps |
 | Cooling is slow to watch | k fits from about 20 s of cooling; the guided run's "wait below 85 °C" step takes about 1.5 min from a fresh pour |
-| No receipt printer | Receipt as a page + QR |
-| A live act fails on stage | Demo-mode hotkey loads the last good run, labeled as a replay |
+| No receipt printer | Show the decision summary PDF (⌘E) |
+| A live act fails on stage | Play the backup video of that act and say what it shows |
 | Recording consent (Pennsylvania requires everyone's consent) | Money mode listens only with consent, or works from documents and your own voice |
 
 ---
