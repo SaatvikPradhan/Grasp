@@ -11,6 +11,8 @@ final class ProbeHub {
     static let kept = 1_800.0
     /// A cup with no reading for this long is shown as stale.
     static let staleAfter = 3.0
+    /// The bench beeps three times and sends `ALERT` when a cup drops below this (the 37 °C demo).
+    static let alertBelow = 37.0
 
     private(set) var history: [Cup: [Reading]] = [:]
     private(set) var latest: [Cup: Reading] = [:]
@@ -24,20 +26,58 @@ final class ProbeHub {
         var id: Double { time }
     }
     private(set) var isSimulated = true
+    /// Room air from the bench's DHT11, once the board sends it.
+    private(set) var room: Double?
 
-    // When the board works, the swap is here: SerialProbeSource() instead (see docs/SENSORS.md).
+    /// Simulated until the Pico bench answers over USB, then the board for good: if it's unplugged,
+    /// its last readings stay on the chart as stale until it's plugged back in.
     @ObservationIgnored private var source: ProbeSource = SimulatedProbeSource()
+    @ObservationIgnored private var board: SerialProbeSource?
     @ObservationIgnored private var started = false
 
     func start() {
         guard !started else { return }
         started = true
-        source.onReading = { [weak self] reading in
+        use(source)
+        let board = SerialProbeSource()
+        board.onRoom = { [weak self] celsius in self?.room = celsius }
+        board.onAlert = { [weak self] cup in
+            self?.mark("Cup \(cup.rawValue) below \(String(format: "%.0f", Self.alertBelow)) °C")
+        }
+        board.onConnect = { [weak self, weak board] in
+            guard let self, let board else { return }
+            if self.source !== board {
+                self.source.stop()
+                // The simulated readings aren't the bench's: start the chart fresh.
+                self.history = [:]
+                self.latest = [:]
+                self.markers = []
+                self.use(board)
+            }
+            self.sourceName = board.name
+            board.send(ProbeProtocol.target(Self.alertBelow))
+        }
+        board.onDisconnect = { [weak self, weak board] in
+            guard let self, let board else { return }
+            self.sourceName = board.name
+        }
+        board.start()
+        self.board = board
+    }
+
+    private func use(_ new: ProbeSource) {
+        source = new
+        new.onReading = { [weak self] reading in
             self?.record(reading)
         }
-        source.start()
-        sourceName = source.name
-        isSimulated = source is SimulatedProbeSource
+        if new is SimulatedProbeSource { new.start() }
+        sourceName = new.name
+        isSimulated = new is SimulatedProbeSource
+    }
+
+    /// Makes the bench's two thermistors read the same. Put both probes in the same cup first.
+    func calibrate() {
+        source.send(ProbeProtocol.calibrate)
     }
 
     /// Pours, lids or ices a simulated cup. Returns false on real probes, which need real hands.
@@ -54,7 +94,7 @@ final class ProbeHub {
         markers.removeAll { now - $0.time > Self.kept }
     }
 
-    /// Sends a `ProbeProtocol` command (LED, FLASH, METER) to the board, if there is one.
+    /// Sends a `ProbeProtocol` command to the board, if there is one (on the Pico bench a FLASH beeps).
     func send(_ command: String) {
         source.send(command)
     }

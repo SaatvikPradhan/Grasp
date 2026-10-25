@@ -38,11 +38,17 @@ struct TemperatureCardView: View {
             .frame(maxHeight: .infinity)
             .clipped()
 
-            Text(hub.isSimulated ? "Simulated probes · plug in the board for real readings" : "Live · \(hub.sourceName)")
+            Text(footer)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.muted)
         }
         .animation(.easeOut(duration: 0.3), value: hub.latest[.a]?.time)
+    }
+
+    private var footer: String {
+        if hub.isSimulated { return "Simulated probes · plug in the board for real readings" }
+        let room = hub.room.map { " · room " + String(format: "%.1f", $0) + " °C" } ?? ""
+        return "Live · \(hub.sourceName)" + room
     }
 
     private var lines: some View {

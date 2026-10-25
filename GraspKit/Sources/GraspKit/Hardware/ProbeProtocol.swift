@@ -14,6 +14,12 @@ public enum ProbeMessage: Equatable, Sendable {
     case temperature(cup: Cup, celsius: Double)
     case error(cup: Cup, reason: String)
     case pong
+    /// Room air from the Pico bench's DHT11, sent as `T,R,23.00`.
+    case room(celsius: Double)
+    /// The Pico bench: this cup just dropped below the target temperature (37 °C unless set).
+    case alert(cup: Cup)
+    /// The Pico bench's answer to `CAL`: the offsets it now adds to cups A and B.
+    case calibrated(a: Double, b: Double)
 }
 
 /// The USB serial protocol between the probe board and the Mac: 115200 baud, one message per line.
@@ -37,6 +43,9 @@ public enum ProbeProtocol {
         case ("ADDR", 3):
             guard let cup = Cup(rawValue: fields[1]), !fields[2].isEmpty else { return nil }
             return .address(cup: cup, rom: fields[2])
+        case ("T", 3) where fields[1] == "R":
+            guard let celsius = Double(fields[2]), validRange.contains(celsius) else { return nil }
+            return .room(celsius: celsius)
         case ("T", 3):
             guard let cup = Cup(rawValue: fields[1]), let celsius = Double(fields[2]),
                   validRange.contains(celsius) else { return nil }
@@ -44,6 +53,12 @@ public enum ProbeProtocol {
         case ("ERR", 3):
             guard let cup = Cup(rawValue: fields[1]) else { return nil }
             return .error(cup: cup, reason: fields[2])
+        case ("ALERT", 2):
+            guard let cup = Cup(rawValue: fields[1]) else { return nil }
+            return .alert(cup: cup)
+        case ("CAL", 3):
+            guard let a = Double(fields[1]), let b = Double(fields[2]) else { return nil }
+            return .calibrated(a: a, b: b)
         default:
             return nil
         }
@@ -72,6 +87,26 @@ public enum ProbeProtocol {
     /// Fills `fraction` of the strip red: the money meter.
     public static func meter(_ fraction: Double) -> String {
         "METER,\(String(format: "%.2f", min(max(fraction, 0), 1)))\n"
+    }
+
+    // MARK: Mac → Pico bench (firmware/pico/main.py)
+
+    /// One short click of the buzzer.
+    public static let beep = "BEEP\n"
+
+    /// Makes both thermistors read the same. Put both probes in the same cup first.
+    public static let calibrate = "CAL\n"
+
+    /// The temperature the bench alerts below (beeps three times and sends `ALERT`).
+    public static func target(_ celsius: Double) -> String {
+        "TARGET,\(String(format: "%.1f", celsius))\n"
+    }
+
+    /// Shows text on the LCD's second line (16 characters); nil gives the line back to the bench.
+    public static func lcd(_ text: String?) -> String {
+        guard let text else { return "LCD\n" }
+        let clean = text.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+        return "LCD,\(clean.prefix(16))\n"
     }
 
     private static func byte(_ value: Int) -> Int {

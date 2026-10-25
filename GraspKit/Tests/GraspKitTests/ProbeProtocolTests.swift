@@ -43,6 +43,34 @@ struct ProbeProtocolTests {
     }
 }
 
+struct PicoBenchProtocolTests {
+    @Test func parsesThePicoMessages() {
+        #expect(ProbeProtocol.parse("T,R,23.00") == .room(celsius: 23))
+        #expect(ProbeProtocol.parse("T,A,44.21") == .temperature(cup: .a, celsius: 44.21))
+        #expect(ProbeProtocol.parse("ALERT,B") == .alert(cup: .b))
+        #expect(ProbeProtocol.parse("CAL,0.35,-0.35") == .calibrated(a: 0.35, b: -0.35))
+    }
+
+    @Test func rejectsBrokenPicoLines() {
+        #expect(ProbeProtocol.parse("T,R,") == nil)
+        #expect(ProbeProtocol.parse("T,R,-127") == nil)
+        #expect(ProbeProtocol.parse("ALERT,R") == nil)
+        #expect(ProbeProtocol.parse("ALERT") == nil)
+        #expect(ProbeProtocol.parse("CAL,0.35") == nil)
+        #expect(ProbeProtocol.parse("CAL,x,y") == nil)
+    }
+
+    @Test func picoCommands() {
+        #expect(ProbeProtocol.beep == "BEEP\n")
+        #expect(ProbeProtocol.calibrate == "CAL\n")
+        #expect(ProbeProtocol.target(37) == "TARGET,37.0\n")
+        #expect(ProbeProtocol.lcd("Step 3 of 8") == "LCD,Step 3 of 8\n")
+        #expect(ProbeProtocol.lcd("A line far too long for the screen") == "LCD,A line far too l\n")
+        #expect(ProbeProtocol.lcd("two\nlines") == "LCD,two lines\n")
+        #expect(ProbeProtocol.lcd(nil) == "LCD\n")
+    }
+}
+
 struct SimulatedBenchTests {
     let bench = SimulatedBench(noise: 0)
 
