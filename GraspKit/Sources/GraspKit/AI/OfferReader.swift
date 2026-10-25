@@ -13,9 +13,11 @@ public struct OfferReader: Sendable {
     }
 
     static let prompt = """
-    Read this car purchase document. Copy numbers exactly as printed; do not calculate anything.
-    document_type: loan_contract for a signed or unsigned financing contract, window_sticker for a \
-    price sticker or dealer add-on sticker, loan_quote for a lender's pre-approval or rate quote, otherwise other.
+    Read this page, which may or may not be about buying a car. Copy numbers exactly as printed; do not calculate anything.
+    document_type: loan_contract for a signed or unsigned vehicle financing contract, window_sticker for a \
+    vehicle price sticker or dealer add-on sticker, loan_quote for a lender's auto loan pre-approval or rate \
+    quote. Anything not about buying or financing a vehicle is other: credit card offers, phone bills, leases, \
+    pay stubs, aid letters, other loans.
     fees: every itemized charge other than the cash price and the down payment, each once; never a \
     subtotal or total line. is_addon is true for \
     optional dealer extras (paint or fabric protection, nitrogen tires, VIN etching, service contracts, \

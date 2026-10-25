@@ -60,9 +60,18 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Read anything** | Any page → what it is, the numbers that matter, the catches in the fine print, and a model when the numbers allow (loan, recurring cost, breakdown) | `PageReader` (Gemini), `OfferReader` for car offers |
 | **Receipts for every number** | Each fact keeps the exact words it came from; Vision finds them on the photo. Hover any number for the photo crop, or for a computed number, the formula and its inputs | `SourceLocator`, provenance popover |
 | **Hold it** | Pinch, twist the model's dial, push two together, swipe, trash | Gesture engine |
-| **Ask anything** | Questions answered from the documents on the canvas, math done by Swift tools, the source sentence highlighted on the phone, read aloud | `QuestionAnswerer`, `Asker`; fist or ⌘K |
+| **Ask anything** | Questions answered from the documents on the canvas, math done by Swift tools, the source sentence highlighted on the phone, read aloud. Follow-ups work ("and without the late fee?") | `QuestionAnswerer`, `Asker`; fist or ⌘K |
+| **Does it add up?** | Every total, hours × rate and percentage on a page is re-checked in Swift; a wrong one shows as a red catch with the right number | `PageReading.relations`, `mismatches` |
+| **Your notes, checked** | Hand it a paper, then your notes: each note is linked to its passage and marked matches / differs / not in the paper, with research directions grounded in what the paper leaves open | `NoteLinker`, `Researcher`; ⌘⇧N or "these are my notes" |
+| **Lab notes** | While recording: camera frames, speech and probe readings. Stopping writes the notebook: each step with what was said and what its probe did then, how they connect, what to try next; ⌘⇧E saves it with Methods, CSV, transcript and frames | `SensorTrace`, `LabNotebookWriter`, `LabSession`; ⌘⇧R or "start lab notes" |
 
 **How it works (built Oct 24):** every page goes to three readers at once: `OfferReader` (car offers: drives the loan, compare and what-to-say cards), `PageReader` (any page: kind, summary, up to 12 facts and 5 catches with exact quotes, and a model whose inputs Swift checks are really on the page), and Vision (where each line is). `SourceLocator` matches each quote to its line, so every fact, catch and answer source has a box on the photo. Computed numbers (totals, payments) hover as their formula, each input traced to its words on the page. Answers use Swift calculator tools (`loan_payment`, `payoff_months`, `total_cost`, `arithmetic`) and are marked unchecked if any number can't be traced. The canvas starts empty ("Hand Grasp anything"); ⌘R lays out the demo cards.
+
+**Added later on Oct 24:**
+- **Arithmetic check.** A second Gemini pass, run in parallel, lists only the page's arithmetic. Each input is labelled with its line, and Swift rereads the number from that line if the model "fixed" it. Numbers count only if they are facts or on a line Vision read. A total listed twice is trusted if either listing adds up.
+- **Test results.** On the five test documents, all six planted arithmetic mistakes were caught in 3 of 3 runs, with no false alarms on the four correct pages.
+- **Follow-ups.** Ask keeps the last four exchanges and thinks at "low". An answer containing a number that can't be traced goes back once to be done with a tool. Follow-up chains on the five documents: 59 of 60 answers right.
+- **Focus.** The card last scanned, grabbed or clicked is in focus. Other pages fold into chips on the left, showing how many mistakes and catches each has. Answers and notes dock beside the card in focus. Ask, Delete and voice commands go to the card in focus.
 
 ### The loop (every feature runs through it)
 
@@ -89,6 +98,8 @@ This file is the single source of truth for the project. Give it to a new Claude
 Tags: **[Demo]** build for the demo · **[If time]** · **[Next]** pitch as future.
 
 ### Research mode
+Built (Oct 24), through the same engine: **notes against a paper** (each note linked to the exact passage, marked matches / differs / not in the paper, numbers checked in Swift, up to 3 directions each grounded in a quote the paper leaves open), and **lab notes** (frames from the phone or Mac camera every 4 s, on-device speech with timed lines, probe readings once a second; Swift finds jumps and cooling-pace changes; Gemini writes steps, observations and next steps; quotes must be in the transcript and readings come from the probes). Research menu: ⌘⇧N check my notes, ⌘⇧R start/stop lab notes, Rehearse a Lab Session (scripted, simulated probes), ⌘⇧E save the notebook. Arrhenius fitting and color timing are next.
+
 - **[Demo] Live sensor charts.** Any Arduino sensor; readings chart themselves once a second.
 - **[Demo] Protocol watcher.** Load steps; the overhead camera checks each one; marks skipped or late steps on the chart.
 - **[Demo] Voice notes on the timeline.** "Lid on" drops a labeled marker at that second.

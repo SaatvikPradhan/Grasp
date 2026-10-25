@@ -1,3 +1,4 @@
+import GraspKit
 import SwiftUI
 
 /// Bottom center of the canvas: what Grasp is hearing, and what it did about it.
@@ -5,9 +6,20 @@ struct VoiceBar: View {
     let voice: VoiceController
     let money: MoneyMode
     let asker: Asker
+    let lab: LabSession
 
     var body: some View {
         HStack(spacing: 10) {
+            if lab.isRecording {
+                // Always visible while recording: everyone at the bench can see it.
+                HStack(spacing: 6) {
+                    Circle().fill(Theme.warn).frame(width: 8, height: 8)
+                    Text("Taking lab notes \(clockTime(lab.elapsed))")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.warn)
+                }
+                .padding(.trailing, 4)
+            }
             if money.conversation.isOn {
                 // Always visible while listening: everyone agreed, and everyone can see it.
                 HStack(spacing: 6) {
@@ -22,7 +34,7 @@ struct VoiceBar: View {
                 Image(systemName: "speaker.wave.2.fill")
                     .foregroundStyle(Theme.accent)
                     .symbolEffect(.variableColor.iterative, options: .repeating)
-            } else if money.isWritingAdvice || asker.isAnswering {
+            } else if money.isWritingAdvice || asker.isAnswering || lab.isWriting {
                 ProgressView().controlSize(.small)
             }
             icon

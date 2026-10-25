@@ -17,6 +17,12 @@ struct AnswerCardView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
+                if let followsOn = card.followsOn {
+                    Text("after “\(followsOn)”")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                }
             }
 
             Text(card.answer.answer)

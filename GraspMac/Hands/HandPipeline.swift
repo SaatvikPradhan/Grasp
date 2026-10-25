@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreImage
 import GraspKit
 import Observation
 import os
@@ -26,6 +27,15 @@ final class HandPipeline {
     @ObservationIgnored let capture = WebcamCapture()
     @ObservationIgnored private let worker = HandWorker()
     @ObservationIgnored private var started = false
+
+    /// Hands `handler` a JPEG of the next camera frame, for the lab notebook.
+    func requestFrame(_ handler: @escaping @MainActor (Data) -> Void) {
+        worker.requestFrame { data in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { handler(data) }
+            }
+        }
+    }
 
     func start(feeding canvas: CanvasModel) async {
         guard !started else { return }
@@ -67,11 +77,27 @@ private final class HandWorker: @unchecked Sendable {
     private let tracker = HandTracker()
     private var engine = GestureEngine()
     private let pendingConfig = OSAllocatedUnfairLock<GestureConfig?>(initialState: nil)
+    private let frameRequest = OSAllocatedUnfairLock<(@Sendable (Data) -> Void)?>(initialState: nil)
+    private let imageContext = CIContext()
     private var framesInWindow = 0
     private var windowStart: Double?
 
     func setConfig(_ config: GestureConfig) {
         pendingConfig.withLock { $0 = config }
+    }
+
+    func requestFrame(_ handler: @escaping @Sendable (Data) -> Void) {
+        frameRequest.withLock { $0 = handler }
+    }
+
+    /// The frame as a JPEG about 640 points wide.
+    private func jpeg(_ buffer: CMSampleBuffer) -> Data? {
+        guard let pixels = CMSampleBufferGetImageBuffer(buffer) else { return nil }
+        let image = CIImage(cvPixelBuffer: pixels)
+        let scale = min(1, 640 / max(image.extent.width, 1))
+        let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return imageContext.jpegRepresentation(of: scaled, colorSpace: CGColorSpaceCreateDeviceRGB(),
+                                               options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6])
     }
 
     func process(_ buffer: CMSampleBuffer) -> Output? {
@@ -80,6 +106,11 @@ private final class HandWorker: @unchecked Sendable {
             return pending
         }
         if let newConfig { engine.config = newConfig }
+        let request = frameRequest.withLock { pending -> (@Sendable (Data) -> Void)? in
+            defer { pending = nil }
+            return pending
+        }
+        if let request, let data = jpeg(buffer) { request(data) }
 
         guard let frame = tracker.detect(in: buffer) else { return nil }
         let hands = engine.update(frame)

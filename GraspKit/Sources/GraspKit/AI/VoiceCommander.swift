@@ -20,6 +20,12 @@ public enum VoiceCommand: Equatable, Sendable {
     case ask(String)
     /// Remove every card.
     case clearCanvas
+    /// "These are my notes on this paper": check the notes against the paper.
+    case checkNotes
+    /// Start or stop taking lab notes (camera, speech and probes).
+    case labNotes(Bool)
+    /// Save the lab notebook with its data and Methods.
+    case saveNotebook
     /// A request for something not built yet (fit, export, explain), by name.
     case comingSoon(String)
     /// Speech that wasn't meant for Grasp: a salesperson talking, small talk, noise.
@@ -66,8 +72,10 @@ public struct VoiceCommander: Sendable {
         case "remove_card": return .removeCard
         case "ask_question": return call.text("question").map { .ask($0) } ?? .none
         case "clear_canvas": return .clearCanvas
+        case "check_notes": return .checkNotes
+        case "lab_notes": return .labNotes(call.flag("on") ?? true)
         case "fit_model": return .comingSoon("fit it")
-        case "export_notebook": return .comingSoon("export")
+        case "export_notebook": return .saveNotebook
         case "explain": return .comingSoon("explain")
         default: return .none
         }
@@ -89,9 +97,12 @@ public struct VoiceCommander: Sendable {
                  ["on": ["type": "BOOLEAN", "description": "True to start listening, false to stop"]]),
         function("make_summary", "Make the one-page decision summary to print or share."),
         function("fit_model", "Fit the model to the measured data, for example 'fit it'."),
-        function("export_notebook", "Export the lab notebook, data and methods."),
+        function("export_notebook", "Export or save the lab notebook, data and methods."),
+        function("lab_notes", "Start or stop taking lab notes of the experiment, for example 'start recording', 'take notes on this', 'stop recording'.",
+                 ["on": ["type": "BOOLEAN", "description": "True to start, false to stop and write them up"]]),
         function("explain", "Explain what the chart means."),
         function("what_to_say", "Say what to ask the dealer, what to negotiate, or what to do next."),
+        function("check_notes", "The user says these are their notes on a paper, or asks to check or link their notes against the paper."),
         function("ask_question", "Any question about the pages, numbers or charts on the canvas: what, how much, can I, what if, why, where does it say.",
                  ["question": ["type": "STRING", "description": "The question, as asked"]]),
         function("not_a_command", "The words were not meant for Grasp."),

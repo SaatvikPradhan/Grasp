@@ -23,6 +23,8 @@ final class PaperReader {
     private(set) var photo: NSImage?
     /// Called with boxes to draw on a phone capture once it has been read.
     @ObservationIgnored var onHighlights: ((UUID, [LinkHighlight]) -> Void)?
+    /// Called with every page read, after its card is on the canvas.
+    @ObservationIgnored var onPage: ((PageDocument) -> Void)?
 
     @ObservationIgnored private let canvas: CanvasModel
     @ObservationIgnored private var latestCardID: UUID?
@@ -67,7 +69,7 @@ final class PaperReader {
                 }
             }
 
-            guard let page = await page else {
+            guard var page = await page else {
                 if offer == nil || offer?.documentType == .other {
                     let message = "Couldn't read that page. Try again with the whole page in view."
                     if latestCardID == cardID { state = .failed(message) }
@@ -76,6 +78,7 @@ final class PaperReader {
                 return
             }
             let recognized = await lines
+            page.lines = recognized.map(\.string)
             let sources = PageText.sources(for: page, in: recognized)
             let document = PageDocument(
                 id: UUID(), image: image, reading: page,
@@ -84,6 +87,7 @@ final class PaperReader {
                 captureID: captureID, readAt: Date()
             )
             canvas.finishPage(cardID, document: document)
+            onPage?(document)
 
             // Pages that aren't car offers get their catches (red) and facts (green) boxed on the phone.
             if offer == nil || offer?.documentType == .other {
@@ -91,7 +95,7 @@ final class PaperReader {
                     state = .page(page, seconds: Date().timeIntervalSince(started))
                 }
                 if let captureID {
-                    let boxes = page.catches.compactMap { item in
+                    let boxes = page.allCatches.compactMap { item in
                         sources.catches[item.title].map { LinkHighlight(text: item.title, rect: $0, kind: .addon) }
                     } + page.facts.compactMap { fact in
                         sources.facts[fact.key].map { LinkHighlight(text: fact.asPrinted, rect: $0, kind: .term) }

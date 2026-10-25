@@ -76,3 +76,105 @@ struct LivePageTests {
         #expect(isDemoLoan(loan))
     }
 }
+
+struct AddsUpTests {
+    func fact(_ key: String, _ value: Double) -> PageReading.Fact {
+        PageReading.Fact(key: key, label: key, asPrinted: String(format: "$%.2f", value), value: value, unit: .dollars, quote: key)
+    }
+
+    func inputs(_ values: [Double]) -> [PageReading.Relation.Input] {
+        values.map { .init(label: "", value: $0) }
+    }
+
+    func page(_ facts: [PageReading.Fact], _ relations: [PageReading.Relation]) -> PageReading {
+        PageReading(kind: "bill", title: "Bill", summary: "", facts: facts, catches: [], model: .init(type: .none), relations: relations)
+    }
+
+    @Test func catchesATotalThatIsTooHigh() {
+        // The phone bill: the −$10 discount was never subtracted.
+        let lines: [Double] = [85, 25, 15, -10, 3.49, 2.99, 7, 6.84]
+        let reading = page(lines.enumerated().map { fact("line\($0.offset)", $0.element) } + [fact("total", 145.32)],
+                           [.init(label: "Total new charges", kind: .sum, stated: 145.32, inputs: inputs(lines))])
+        #expect(reading.mismatches.count == 1)
+        #expect(abs(reading.mismatches[0].expected - 135.32) < 0.001)
+        #expect(abs(reading.mismatches[0].difference - 10) < 0.001)
+        #expect(reading.allCatches.first?.title == "Doesn't add up: Total new charges")
+    }
+
+    @Test func catchesHoursTimesRateAndAPercentage() {
+        let reading = page([fact("hours", 32.5), fact("rate", 13.5), fact("gross", 425.25), fact("ss", 28.37), fact("pct", 6.2)], [
+            .init(label: "Gross pay", kind: .product, stated: 425.25, inputs: inputs([32.5, 13.5])),
+            .init(label: "Social Security", kind: .percentOf, stated: 28.37, inputs: inputs([6.2, 425.25])),
+        ])
+        #expect(reading.mismatches.map(\.expected) == [438.75, 26.37])
+    }
+
+    @Test func aTotalListedTwiceIsTrustedIfEitherAddsUp() {
+        let facts = [fact("a", 100), fact("b", 50), fact("c", 25), fact("total", 175)]
+        let wrongly = PageReading.Relation(label: "Total", kind: .sum, stated: 175, inputs: inputs([100, 50]))
+        let rightly = PageReading.Relation(label: "Total", kind: .sum, stated: 175, inputs: inputs([100, 50, 25]))
+        #expect(page(facts, [wrongly, rightly]).mismatches.isEmpty)
+        #expect(page(facts, [wrongly, wrongly]).mismatches.count == 1)
+    }
+
+    @Test func theBreakdownIsThePagesLongestTotalAddedUpAgain() {
+        let lines: [Double] = [85, 25, 15, -10, 3.49, 2.99, 7, 6.84]
+        var reading = page(lines.enumerated().map { fact("line\($0.offset)", $0.element) } + [fact("total", 145.32), fact("net", 340)], [
+            .init(label: "Net pay", kind: .sum, stated: 340, inputs: inputs([425.25, -85.25])),
+            .init(label: "Total new charges", kind: .sum, stated: 145.32, inputs: inputs(lines)),
+        ])
+        reading.model = .init(type: .breakdown)
+        guard case .breakdown(let breakdown) = reading.resolvedModel else { Issue.record("expected a breakdown"); return }
+        #expect(breakdown.label == "Total new charges")
+        #expect(breakdown.lines.count == 8)
+        #expect(breakdown.total == 135.32)
+        #expect(!breakdown.matchesPage)
+        // No itemized total on the page: no made-up one.
+        reading.relations = []
+        #expect(reading.resolvedModel == .none)
+    }
+
+    @Test func aPercentPrintedWithOneDecimalCounts() {
+        var reading = page([fact("gross", 425.25)], [
+            .init(label: "Social Security", kind: .percentOf, stated: 28.37, inputs: inputs([6.2, 425.25])),
+        ])
+        reading.lines = ["Social Security (6.2%)", "28.37"]
+        #expect(reading.mismatches.map(\.expected) == [26.37])
+    }
+
+    @Test func correctTotalsPass() {
+        let reading = page([fact("a", 19_900), fact("b", 499), fact("c", 895), fact("d", 1_306), fact("subtotal", 22_600)],
+                           [.init(label: "Subtotal", kind: .sum, stated: 22_600, inputs: inputs([19_900, 499, 895, 1_306]))])
+        #expect(reading.mismatches.isEmpty)
+    }
+
+    @Test func numbersNotOnThePageCantCreateAMistake() {
+        let reading = page([fact("total", 100)], [.init(label: "Total", kind: .sum, stated: 100, inputs: inputs([60, 50]))])
+        #expect(reading.mismatches.isEmpty)
+    }
+
+    @Test func aNumberOnAnyLineOfThePageCounts() {
+        // Hours and rate aren't facts, but Vision read them on the page.
+        var reading = page([fact("gross", 425.25)], [.init(label: "Gross pay", kind: .product, stated: 425.25, inputs: inputs([32.5, 13.5]))])
+        #expect(reading.mismatches.isEmpty)
+        reading.lines = ["Regular 32.50 13.50 425.25 2,104.75"]
+        #expect(reading.mismatches.map(\.expected) == [438.75])
+        // A number that only looks close doesn't count: 1,150 is not 150.
+        reading.lines = ["Monthly rent $1,150.00"]
+        #expect(reading.spot(of: 150) == nil)
+        #expect(reading.spot(of: 1_150)?.quote == "Monthly rent $1,150.00")
+    }
+
+    @Test func aFixedUpInputIsReadFromItsLine() {
+        // The page says $14,400 for 12 months at $1,150; the model wrote 1,200 so it would add up.
+        var rent = fact("monthly_rent", 1_150)
+        rent.label = "Monthly rent"
+        var reading = page([rent, fact("total_rent", 14_400)], [
+            .init(label: "Total rent", kind: .product, stated: 14_400,
+                  inputs: [.init(label: "Monthly rent", value: 1_200), .init(label: "Months", value: 12)]),
+        ])
+        reading.lines = ["Lease term 12 months: Aug 15, 2026 to Aug 14, 2027"]
+        #expect(reading.mismatches.map(\.expected) == [13_800])
+        #expect(reading.mismatches.first?.relation.values == [1_150, 12])
+    }
+}

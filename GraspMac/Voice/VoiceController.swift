@@ -20,15 +20,19 @@ final class VoiceController {
     @ObservationIgnored private let canvas: CanvasModel
     @ObservationIgnored private let money: MoneyMode
     @ObservationIgnored private let asker: Asker
+    @ObservationIgnored private let researcher: Researcher
+    @ObservationIgnored private let lab: LabSession
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
 
-    init(canvas: CanvasModel, money: MoneyMode, asker: Asker) {
+    init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession) {
         self.canvas = canvas
         self.money = money
         self.asker = asker
+        self.researcher = researcher
+        self.lab = lab
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -144,12 +148,18 @@ final class VoiceController {
         case .ask(let question):
             return await asker.ask(question)
         case .removeCard:
-            return canvas.deleteFrontCard() ? "Threw away the card in front" : "There's nothing to throw away"
+            return canvas.deleteFocusedCard() ? "Threw away the card in focus" : "There's nothing to throw away"
         case .clearCanvas:
             canvas.clearCanvas()
             return "Cleared the canvas"
+        case .checkNotes:
+            return await researcher.linkLatestNotes()
+        case .labNotes(let on):
+            return on ? lab.start() : await lab.stop()
+        case .saveNotebook:
+            return lab.save()
         case .comingSoon(let request):
-            return "\"\(request.capitalized)\" comes with Research mode"
+            return "\"\(request.capitalized)\" isn't built yet"
         case .none:
             return "That didn't sound like a command"
         }

@@ -10,6 +10,7 @@ struct CanvasView: View {
     let voice: VoiceController
     let money: MoneyMode
     let asker: Asker
+    let lab: LabSession
     /// Rendering to a PNG: leaves out the camera preview and drop target, which can't be drawn offscreen.
     var isSnapshot = false
     @State private var popoverSize = CGSize(width: 400, height: 300)
@@ -28,6 +29,7 @@ struct CanvasView: View {
                     isHeld: model.isHeld(card.id),
                     isMergeCandidate: model.mergeCandidates.contains(card.id),
                     isTrashTarget: model.trashTarget == card.id,
+                    isFocused: model.focusedID == card.id && model.cards.count > 1,
                     probes: probes
                 )
                     .position(card.center)
@@ -37,8 +39,9 @@ struct CanvasView: View {
                     )
                     .transition(.scale(scale: 0.4).combined(with: .opacity))
                     // Mouse stand-ins: drag to move (and onto another loan to compare),
-                    // double-click to switch bars and lines.
+                    // click to focus (and open a chip), double-click to switch bars and lines.
                     .onTapGesture(count: 2) { model.toggleStyle(of: card.id) }
+                    .onTapGesture { model.focus(card.id) }
                     .gesture(
                         DragGesture(minimumDistance: 2)
                             .onChanged { model.mouseDrag(card.id, translation: $0.translation) }
@@ -61,16 +64,17 @@ struct CanvasView: View {
             HStack(alignment: .top) {
                 Spacer()
                 VStack(spacing: 12) {
-                    PhonePanel(phone: phone)
+                    PhonePanel(phone: phone, showsHelp: model.cards.isEmpty)
                     PaperPanel(reader: paper)
                 }
+                .onGeometryChange(for: Double.self) { $0.size.height } action: { model.panelHeight = $0 + 36 }
             }
             .padding(.top, 36)
             .padding(.trailing, 20)
 
             VStack {
                 Spacer()
-                VoiceBar(voice: voice, money: money, asker: asker)
+                VoiceBar(voice: voice, money: money, asker: asker, lab: lab)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 20)

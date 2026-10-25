@@ -5,6 +5,8 @@ import SwiftUI
 /// here within 300 ms.
 struct PhonePanel: View {
     let phone: PhoneLink
+    /// How to connect, on an empty canvas; once there are cards, waiting is one line.
+    var showsHelp = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -34,7 +36,7 @@ struct PhonePanel: View {
                 Text("\(Int(phone.framesPerSecond.rounded())) fps live · \(phone.captureCount) sent to the canvas")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.muted)
-            } else if !isConnected {
+            } else if !isConnected && showsHelp {
                 Text("Open Grasp on your iPhone. Wi-Fi and Bluetooth must be on, but they don't need to share a network.")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)

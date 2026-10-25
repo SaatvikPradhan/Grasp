@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample research paper</title>
+<!-- Test document for linking notes to a paper. The notes in paper-notes.html get some of it wrong on purpose: see props/TEST-DOCUMENTS.md. -->
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 30px 40px; background: #fff; color: #1a1a1a; font: 12px/1.45 Georgia, "Times New Roman", serif; width: 8.5in; }
+  h1 { font-size: 19px; text-align: center; margin: 0 0 4px; line-height: 1.25; }
+  .authors { text-align: center; font-size: 11.5px; color: #333; margin-bottom: 12px; }
+  .abstract { border-top: 1px solid #999; border-bottom: 1px solid #999; padding: 8px 4px; margin-bottom: 12px; font-size: 11.5px; }
+  .abstract b { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; letter-spacing: .08em; }
+  .cols { columns: 2; column-gap: 22px; text-align: justify; }
+  h2 { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin: 8px 0 4px; break-after: avoid; }
+  p { margin: 0 0 7px; }
+  table { width: 100%; border-collapse: collapse; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; margin: 4px 0 8px; break-inside: avoid; }
+  th, td { border-bottom: 1px solid #ccc; padding: 3px 4px; text-align: left; }
+  th { border-bottom: 1.5px solid #333; }
+  td.n { text-align: right; }
+  .cap { font-size: 10px; color: #444; margin-bottom: 8px; }
+  .demo { margin-top: 10px; text-align: center; font-size: 9.5px; color: #999; letter-spacing: .08em; font-family: "Helvetica Neue", Arial, sans-serif; }
+</style>
+</head>
+<body>
+  <h1>Lids, Sleeves and the Cooling of Hot Drinks in Disposable and Ceramic Cups</h1>
+  <div class="authors">R. Okafor, M. Lindqvist and J. Tran · Department of Physics, Valley State University · Undergraduate Research Journal 4 (2026)</div>
+
+  <div class="abstract"><b>ABSTRACT</b> We measured how quickly 350 mL of water at 90 °C cools in paper and ceramic cups, with and without a plastic lid and a cardboard sleeve. Each condition was repeated in 12 trials at a room temperature of 21 °C. Cooling followed Newton's law closely (R² above 0.98 in every trial). A lid lowered the cooling constant from 0.031 per minute to 0.019 per minute, so a lidded paper cup took 23.5 minutes to reach 60 °C, compared with 14.2 minutes without a lid. A sleeve made no measurable difference.</div>
+
+  <div class="cols">
+    <h2>1. Methods</h2>
+    <p>Water was heated to 90 °C and poured into pre-weighed cups. A thermocouple probe was held 2 cm below the surface and read once per second for 40 minutes. The room was kept at 21 °C, within 1 °C, and the water was not stirred. Four conditions were tested in paper cups (no lid, lid, sleeve, lid and sleeve) and two in ceramic mugs (no lid, lid). Each condition was repeated in 12 trials, in random order.</p>
+    <p>For each trial we fitted T(t) = T<sub>room</sub> + (T<sub>0</sub> − T<sub>room</sub>)e<sup>−kt</sup> by least squares and report the mean cooling constant k with its standard deviation.</p>
+
+    <h2>2. Results</h2>
+    <table>
+      <tr><th>Condition</th><th class="n">k (per min)</th><th class="n">Minutes to 60 °C</th></tr>
+      <tr><td>Paper, no lid</td><td class="n">0.031 ± 0.002</td><td class="n">14.2</td></tr>
+      <tr><td>Paper, lid</td><td class="n">0.019 ± 0.002</td><td class="n">23.5</td></tr>
+      <tr><td>Paper, sleeve</td><td class="n">0.030 ± 0.003</td><td class="n">14.6</td></tr>
+      <tr><td>Paper, lid and sleeve</td><td class="n">0.019 ± 0.002</td><td class="n">23.8</td></tr>
+      <tr><td>Ceramic, no lid</td><td class="n">0.027 ± 0.002</td><td class="n">15.1</td></tr>
+      <tr><td>Ceramic, lid</td><td class="n">0.017 ± 0.001</td><td class="n">25.9</td></tr>
+    </table>
+    <div class="cap">Table 1. Mean cooling constant and time to cool from 90 °C to 60 °C, 12 trials per condition.</div>
+    <p>The lid had by far the largest effect, lowering k by about 39%. The sleeve's effect was smaller than the trial-to-trial spread. Ceramic mugs lost heat faster than paper cups in the first five minutes, while the mug wall warmed up, and more slowly after that.</p>
+
+    <h2>3. Discussion</h2>
+    <p>Most heat leaves an open cup through its surface. We did not measure evaporation, but we expect it accounts for part of the lid effect, since a lid traps water vapour above the drink. Our probe sat near the surface, so stirring, which we avoided, could change the readings.</p>
+
+    <h2>4. Limitations and future work</h2>
+    <p>We tested one fill volume (350 mL) and one starting temperature. Evaporative mass loss was not recorded; weighing the cup during cooling would separate evaporation from conduction. Double-walled cups and lids with drinking holes open or closed remain to be tested.</p>
+  </div>
+  <div class="demo">SAMPLE PAPER FOR A HACKATHON DEMO · THE DATA ARE MADE UP</div>
+</body>
+</html>

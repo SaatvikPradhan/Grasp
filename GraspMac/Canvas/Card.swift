@@ -76,7 +76,7 @@ struct PageDocument: Equatable, Identifiable {
 
     /// Facts worth showing as chips: everything except what the model line already says.
     var shownFacts: [PageReading.Fact] { Array(reading.facts.prefix(8)) }
-    var shownCatches: [PageReading.Catch] { Array(reading.catches.prefix(4)) }
+    var shownCatches: [PageReading.Catch] { Array(reading.allCatches.prefix(4)) }
 }
 
 /// A question and Grasp's answer, with the words on the pages that back it.
@@ -93,6 +93,36 @@ struct AnswerCard: Equatable {
     var question: String
     var answer: GroundedAnswer
     var sources: [Source]
+    /// The question this one follows on from, if it does.
+    var followsOn: String?
+}
+
+/// Someone's notes on a paper, each tied to the passage it's about, and where the research could go.
+struct NotesCard: Equatable {
+    /// The paper's document.
+    var paperID: UUID
+    var paperTitle: String
+    var linked: LinkedNotes
+}
+
+/// A lab session written up, with the frames it was written from.
+struct NotebookCard: Equatable {
+    var notebook: LabNotebook
+    var frames: [LabRecording.Frame]
+    /// The scripted session with simulated probes, not a real one.
+    var isRehearsal: Bool
+    var date: Date
+
+    static func == (lhs: NotebookCard, rhs: NotebookCard) -> Bool {
+        lhs.notebook == rhs.notebook && lhs.date == rhs.date
+    }
+
+    /// The frame nearest a moment, within a few seconds.
+    func frame(at seconds: Double) -> NSImage? {
+        frames.filter { abs($0.seconds - seconds) <= 6 }
+            .min { abs($0.seconds - seconds) < abs($1.seconds - seconds) }
+            .flatMap { NSImage(data: $0.jpeg) }
+    }
 }
 
 /// A photo from the phone (or a dropped file), shown while Gemini reads it.
@@ -138,6 +168,10 @@ struct Card: Identifiable, Equatable {
         case document(PageDocument)
         /// A question answered from the pages, with its sources.
         case answer(AnswerCard)
+        /// Notes on a paper, linked to its passages.
+        case notes(NotesCard)
+        /// A lab session written up.
+        case notebook(NotebookCard)
     }
 
     /// Swipe flips a card between its two ways of drawing the same numbers (bars and lines).
@@ -155,6 +189,10 @@ struct Card: Identifiable, Equatable {
     var style = Style.primary
     /// True while flying in from the phone, for a slower, bouncier spring.
     var isArriving = false
+    /// A page out of focus, shrunk to a chip: its title and what's wrong with it.
+    var isFolded = false
+
+    static let chipSize = CGSize(width: 260, height: 66)
 
     init(id: UUID = UUID(), center: CGPoint, kind: Kind) {
         self.id = id
@@ -163,15 +201,18 @@ struct Card: Identifiable, Equatable {
     }
 
     var size: CGSize {
-        switch kind {
+        if isFolded { return Self.chipSize }
+        return switch kind {
         case .loan: CGSize(width: 460, height: 310)
         case .comparison: CGSize(width: 540, height: 340)
         case .temperatures: CGSize(width: 420, height: 290)
         case .scan(let scan): CGSize(width: 300, height: Self.photoHeight(scan.image) + Self.scanFooter(scan.status))
         case .advice(let advice): CGSize(width: 500, height: 96 + Double(advice.lines.count) * 58)
         case .pitch(let checks): CGSize(width: 460, height: 70 + Double(min(checks.count, 3)) * 74)
-        case .document(let document): CGSize(width: 520, height: Self.documentHeight(document))
-        case .answer(let answer): CGSize(width: 520, height: Self.answerHeight(answer))
+        case .document(let document): CGSize(width: Self.documentWidth, height: Self.documentHeight(document))
+        case .answer(let answer): CGSize(width: Self.answerWidth, height: Self.answerHeight(answer))
+        case .notes(let notes): CGSize(width: Self.notesWidth, height: Self.notesHeight(notes))
+        case .notebook(let notebook): CGSize(width: Self.notebookWidth, height: Self.notebookHeight(notebook))
         }
     }
 
@@ -185,7 +226,8 @@ struct Card: Identifiable, Equatable {
     }
 
     var dial: Dial? {
-        switch kind {
+        guard !isFolded else { return nil }
+        return switch kind {
         case .loan(let card):
             Dial(value: card.loan.termMonths, range: LoanCard.termRange, step: LoanCard.termStep, unit: "mo")
         case .comparison(let comparison):
@@ -199,7 +241,7 @@ struct Card: Identifiable, Equatable {
             case .breakdown, .none:
                 nil
             }
-        case .temperatures, .scan, .advice, .pitch, .answer:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
             nil
         }
     }
@@ -221,7 +263,7 @@ struct Card: Identifiable, Equatable {
         case .document(var document):
             document.months = value
             kind = .document(document)
-        case .temperatures, .scan, .advice, .pitch, .answer:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook:
             return false
         }
         return true
@@ -229,11 +271,39 @@ struct Card: Identifiable, Equatable {
 
     // MARK: Answer layout
 
+    /// Narrow enough that chips, the page in focus and an answer fit side by side at 1280 points.
+    static let answerWidth = 440.0
+    static let documentWidth = 480.0
+
     static func answerHeight(_ card: AnswerCard) -> Double {
-        let answerLines = ceil(Double(card.answer.answer.count) / 52)
-        return 40 + 46 + answerLines * 23 + 30
+        let answerLines = ceil(Double(card.answer.answer.count) / 42)
+        return 40 + 46 + (card.followsOn == nil ? 0 : 16) + answerLines * 23 + 30
             + (card.sources.isEmpty ? 0 : 22 + Double(card.sources.count) * 40)
             + (card.answer.calculations.isEmpty ? 0 : 20 + Double(card.answer.calculations.count) * 18)
+    }
+
+    // MARK: Notes layout
+
+    static let notesWidth = 520.0
+
+    static func notesHeight(_ card: NotesCard) -> Double {
+        let notes = card.linked.notes.reduce(0.0) { total, note in total + (note.paperSays == nil ? 30 : 48) }
+        let directions = card.linked.directions.isEmpty ? 0 : 28 + Double(card.linked.directions.count) * 46
+        return 40 + 62 + notes + directions + 8
+    }
+
+    // MARK: Notebook layout
+
+    /// Steps on the left, what they show and what to try next on the right.
+    static let notebookWidth = 820.0
+    static let notebookStepsWidth = 470.0
+
+    static func notebookHeight(_ card: NotebookCard) -> Double {
+        let notebook = card.notebook
+        let steps = 22 + notebook.steps.reduce(0.0) { total, step in total + (step.said == nil ? 24 : 38) }
+        let observations = notebook.observations.isEmpty ? 0 : 24 + Double(notebook.observations.count) * 56
+        let next = notebook.next.isEmpty ? 0 : 24 + Double(notebook.next.count) * 38
+        return 40 + 66 + 10 + max(steps, observations + next) + 10 + 22
     }
 
     // MARK: Document layout

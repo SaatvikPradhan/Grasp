@@ -100,12 +100,18 @@ struct DocumentCardView: View {
                 detail: recurringDetail(cost),
                 months: cost.months
             )
-        case .breakdown(let items):
-            let total = items.compactMap(\.value).reduce(0, +)
-            Text("\(items.count) charges adding up to \(dollars(total, cents: true))")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .hoverSource(.derived(card: cardID, name: "total"))
+        case .breakdown(let breakdown):
+            HStack(spacing: 6) {
+                Text("\(breakdown.label): \(breakdown.lines.count) lines add up to \(dollars(breakdown.total, cents: true))")
+                    .foregroundStyle(Theme.ink)
+                if !breakdown.matchesPage {
+                    Text("page says \(dollars(breakdown.printed, cents: true))")
+                        .foregroundStyle(Theme.warn)
+                }
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .lineLimit(1)
+            .hoverSource(.derived(card: cardID, name: "total"))
         case .none:
             EmptyView()
         }

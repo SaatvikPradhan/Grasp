@@ -12,6 +12,10 @@ enum HoverTarget: Hashable {
     case derived(card: UUID, name: String)
     /// Words on a page that back an answer.
     case answerSource(card: UUID, index: Int)
+    /// The passage of a paper a note (index below the note count) or a direction (after them) is about.
+    case passage(card: UUID, index: Int)
+    /// A step in a lab notebook: the frame, the words and the reading at that moment.
+    case labStep(card: UUID, index: Int)
 }
 
 /// Where something came from, ready to show.

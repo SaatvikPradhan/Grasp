@@ -23,6 +23,11 @@ final class CanvasModel {
     static let space = "canvas"
     /// Every page read so far, so any number on the canvas can show where it came from.
     var documents: [UUID: PageDocument] = [:]
+    /// How far down the phone and paper panels reach, top right.
+    var panelHeight = 560.0
+    /// The card being worked on: the last one scanned, grabbed or clicked. Questions and
+    /// commands go to it.
+    private(set) var focusedID: UUID?
     /// What's being hovered, by mouse or by a hand held still over it.
     private(set) var hovered: HoverTarget?
     /// Called when the hovered item changes, for lighting the same spot on the phone.
@@ -113,9 +118,10 @@ final class CanvasModel {
 
         if grips[hand.id] == nil {
             // A pinch grabs the top card under it, or nothing; it never picks one up later.
-            if let index = cards.lastIndex(where: { $0.frame.contains(p) }) {
-                let card = cards.remove(at: index)
-                cards.append(card)
+            // Grabbing puts it in focus, and a chip opens up under the hand.
+            if let found = cards.last(where: { $0.frame.contains(p) }) {
+                focus(found.id, openingAt: p)
+                guard let card = cards.last else { return }
                 grips[hand.id] = Grip(
                     cardID: card.id,
                     offset: CGSize(width: card.center.x - p.x, height: card.center.y - p.y),
@@ -235,13 +241,18 @@ final class CanvasModel {
         withAnimation(.spring(duration: 0.3)) {
             cards.removeAll { $0.id == id }
         }
+        // Throwing away the page in focus opens the one read before it.
+        if focusedID == id {
+            focusedID = nil
+            if let previous = pagesByAge.last { focus(previous.id) }
+        }
     }
 
-    /// Deletes the frontmost card, for the Delete key and voice.
+    /// Deletes the card in focus (or the frontmost), for the Delete key and voice.
     @discardableResult
-    func deleteFrontCard() -> Bool {
-        guard let card = cards.last else { return false }
-        delete(card.id)
+    func deleteFocusedCard() -> Bool {
+        guard let id = focusedID ?? cards.last?.id else { return false }
+        delete(id)
         return true
     }
 
@@ -249,9 +260,64 @@ final class CanvasModel {
         grips = grips.mapValues { _ in Grip() }
         mergeCandidates = []
         trashTarget = nil
+        focusedID = nil
         withAnimation(.spring(duration: 0.35)) {
             cards.removeAll()
         }
+    }
+
+    // MARK: Focus
+
+    /// Moves focus to a card and brings it to the front. Focusing a page folds every other page
+    /// into a chip down the left edge; a chip that gets focus opens again, at `point` if given
+    /// (under a hand that grabbed it) or in open space.
+    func focus(_ id: UUID, openingAt point: CGPoint? = nil) {
+        guard let index = index(of: id) else { return }
+        focusedID = id
+        let card = cards.remove(at: index)
+        cards.append(card)
+        guard case .document = card.kind else { return }
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            open(id, at: point)
+            let others = pagesByAge.filter { $0.id != id }
+            for (slot, page) in others.enumerated() {
+                fold(page.id, slot: slot)
+            }
+        }
+    }
+
+    private func open(_ id: UUID, at point: CGPoint?) {
+        guard let index = index(of: id), cards[index].isFolded else { return }
+        cards[index].isFolded = false
+        let size = cards[index].size
+        if let point {
+            cards[index].center = fitted(point, size: size)
+        } else {
+            cards[index].center = freeSpot(for: size, excluding: id)
+        }
+    }
+
+    /// Shrinks a page to a chip, in its place down the left edge.
+    private func fold(_ id: UUID, slot: Int) {
+        guard let index = index(of: id) else { return }
+        let chip = Card.chipSize
+        let y = 130 + chip.height / 2 + Double(slot) * (chip.height + 10)
+        cards[index].isFolded = true
+        cards[index].center = CGPoint(x: 28 + chip.width / 2, y: y)
+    }
+
+    /// The document card in focus, if focus is on a page.
+    var focusedDocument: PageDocument? {
+        focusedID.flatMap(card).flatMap(document(for:))
+    }
+
+    /// Page cards, oldest first, so chips keep their order.
+    private var pagesByAge: [Card] {
+        let pages: [(card: Card, readAt: Date)] = cards.compactMap { card in
+            guard case .document(let document) = card.kind else { return nil }
+            return (card, document.readAt)
+        }
+        return pages.sorted { $0.readAt < $1.readAt }.map(\.card)
     }
 
     // MARK: Swipe
@@ -312,6 +378,7 @@ final class CanvasModel {
                 cards.removeAll { $0.id != id && $0.loanCard?.role == .dealer }
             }
             settle(id)
+            focus(id)
             return
         case .loanQuote:
             guard let apr = reading.aprPercent else { break }
@@ -328,6 +395,7 @@ final class CanvasModel {
                 cards.removeAll { $0.id != id && $0.loanCard?.role == .quote }
             }
             settle(id)
+            focus(id)
             return
         case .windowSticker:
             break
@@ -481,9 +549,9 @@ final class CanvasModel {
     func mouseDrag(_ id: UUID, translation: CGSize) {
         guard let index = index(of: id) else { return }
         if mouseGrip?.id != id {
-            mouseGrip = (id, cards[index].center)
-            let card = cards.remove(at: index)
-            cards.append(card)
+            focus(id, openingAt: cards[index].center)
+            guard let card = cards.last else { return }
+            mouseGrip = (id, card.center)
         }
         guard let start = mouseGrip, let index = self.index(of: id) else { return }
         cards[index].center = clamped(CGPoint(x: start.startCenter.x + translation.width, y: start.startCenter.y + translation.height))
@@ -541,9 +609,14 @@ final class CanvasModel {
             case .pitch:
                 "The salesperson's pitch, checked"
             case .document(let document):
-                "\(document.reading.title) (\(document.reading.kind))"
+                "\(document.reading.title) (\(document.reading.kind))\(card.id == focusedID ? ", in focus" : "")"
             case .answer(let answer):
                 "An answer to “\(answer.question)”"
+            case .notes(let notes):
+                "Notes on \(notes.paperTitle): \(notes.linked.notes.count) notes, "
+                    + "\(notes.linked.notes.filter { $0.status == .differs }.count) differ from the paper"
+            case .notebook(let notebook):
+                "Lab notebook: \(notebook.notebook.title)"
             }
         }
         return parts.isEmpty ? "Nothing yet." : parts.joined(separator: ". ") + "."
@@ -576,12 +649,20 @@ final class CanvasModel {
         )
     }
 
+    /// Moves a center so the whole card is on the canvas.
+    private func fitted(_ center: CGPoint, size: CGSize) -> CGPoint {
+        CGPoint(
+            x: min(max(center.x, size.width / 2 + 20), max(size.width / 2 + 20, canvasSize.width - size.width / 2 - 20)),
+            y: min(max(center.y, size.height / 2 + 20), max(size.height / 2 + 20, canvasSize.height - size.height / 2 - 20))
+        )
+    }
+
     /// Where the overlays sit: the header, the phone and paper panels, the voice bar and the
     /// hand debug panel.
     private var reservedAreas: [CGRect] {
         var areas = [
             CGRect(x: 0, y: 0, width: 420, height: 110),
-            CGRect(x: canvasSize.width - 320, y: 0, width: 320, height: 560),
+            CGRect(x: canvasSize.width - 320, y: 0, width: 320, height: panelHeight),
             CGRect(x: canvasSize.width / 2 - 260, y: canvasSize.height - 75, width: 520, height: 75),
             CGRect(x: canvasSize.width - 170, y: canvasSize.height - 170, width: 170, height: 170),
         ]
@@ -594,8 +675,10 @@ final class CanvasModel {
     /// The spot that overlaps the least, nearest the middle among equals. Covering a panel
     /// (header, phone, debug, trash, voice bar) costs three times as much as covering a card.
     private func freeSpot(for size: CGSize, excluding excluded: UUID? = nil) -> CGPoint {
-        let others = cards.filter { !$0.isArriving && $0.id != excluded }.map(\.frame)
-        let reserved = reservedAreas
+        let placed = cards.filter { !$0.isArriving && $0.id != excluded }
+        // Covering the card in focus or a chip costs as much as covering a panel.
+        let others = placed.filter { $0.id != focusedID && !$0.isFolded }.map(\.frame)
+        let reserved = reservedAreas + placed.filter { $0.id == focusedID || $0.isFolded }.map(\.frame)
         let middle = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         var best = middle
         var bestScore = Double.infinity
@@ -697,7 +780,7 @@ extension CanvasModel {
             cards[index].kind = .loan(loan)
         case .scan(let scan):
             if case .read = scan.status { return }   // a window sticker, already shown
-            guard !document.reading.facts.isEmpty || !document.reading.catches.isEmpty else {
+            guard !document.reading.facts.isEmpty || !document.reading.allCatches.isEmpty else {
                 setScanStatus(at: index, .failed("Nothing to read on this page."))
                 removeLater(cardID)
                 return
@@ -705,6 +788,7 @@ extension CanvasModel {
             withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
                 cards[index].kind = .document(document)
             }
+            focus(cardID)
             settle(cardID)
         default:
             break
@@ -727,14 +811,108 @@ extension CanvasModel {
             let source = answer.sources[index]
             guard let capture = documents[source.documentID]?.captureID, let rect = source.box else { return nil }
             return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
+        case .labStep:
+            return nil
+        case .passage(let cardID, let index):
+            guard let (document, passage) = passage(cardID, index), let capture = document.captureID,
+                  let rect = box(for: passage.location, in: document) else { return nil }
+            return (capture, LinkHighlight(text: passage.quote, rect: rect, kind: .term))
         case .derived:
             return nil
         }
     }
 
-    /// Shows a new answer, replacing the last one so answers don't pile up.
+    /// Shows linked notes beside their paper. Notes read from a page take that page's card;
+    /// typed notes replace the paper's last notes card.
+    func showNotes(_ notes: NotesCard, replacing cardID: UUID? = nil) {
+        withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
+            if let cardID, let index = index(of: cardID) {
+                cards[index].isFolded = false
+                cards[index].kind = .notes(notes)
+            } else {
+                show(.notes(notes)) { if case .notes(let old) = $0 { old.paperID == notes.paperID } else { false } }
+            }
+        }
+        let notesID = cardID ?? cards.last { if case .notes(let old) = $0.kind { old.paperID == notes.paperID } else { false } }?.id
+        guard let notesID, let paper = cards.first(where: { document(for: $0)?.id == notes.paperID }) else { return }
+        focus(paper.id)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(notesID) }
+    }
+
+    /// Shows a written-up lab session, replacing the last one.
+    func showNotebook(_ notebook: NotebookCard) {
+        show(.notebook(notebook)) { if case .notebook = $0 { true } else { false } }
+        if let id = cards.first(where: { if case .notebook = $0.kind { true } else { false } })?.id { focus(id) }
+    }
+
+    /// Lab notebooks on the canvas, as pages Ask can answer from.
+    var notebookPages: [AskedDocument] {
+        cards.compactMap { card in
+            guard case .notebook(let notebook) = card.kind else { return nil }
+            let book = notebook.notebook
+            return AskedDocument(
+                title: book.title, kind: "lab notebook", summary: book.summary,
+                facts: book.trace.cups.map { "Cup \($0.cup.rawValue): \(String(format: "%.1f", $0.start)) °C to \(String(format: "%.1f", $0.end)) °C" },
+                catches: [],
+                text: book.markdown(date: notebook.date, frames: notebook.frames.count, rehearsal: notebook.isRehearsal)
+            )
+        }
+    }
+
+    /// The paper and the words a note or direction is about.
+    private func passage(_ cardID: UUID, _ index: Int) -> (PageDocument, (quote: String, location: SourceLocator.Location))? {
+        guard case .notes(let card)? = card(cardID)?.kind, let document = documents[card.paperID] else { return nil }
+        let notes = card.linked.notes, directions = card.linked.directions
+        if notes.indices.contains(index) {
+            guard let quote = notes[index].quote, let location = notes[index].location else { return nil }
+            return (document, (quote, location))
+        }
+        let direction = index - notes.count
+        guard directions.indices.contains(direction) else { return nil }
+        return (document, (directions[direction].quote, directions[direction].location))
+    }
+
+    /// The box around found words on a page, in the photo's normalized coordinates.
+    func box(for location: SourceLocator.Location, in document: PageDocument) -> CGRect? {
+        guard document.lineBoxes.indices.contains(location.line) else { return nil }
+        let lines = document.lineBoxes[location.line...min(location.line + location.extraLines, document.lineBoxes.count - 1)]
+        let box = lines.dropFirst().reduce(lines.first) { $0?.union($1) }
+        return box.flatMap { $0 == .zero ? nil : $0 }
+    }
+
+    /// Shows a new answer, replacing the last one so answers don't pile up, beside the page in focus.
     func showAnswer(_ answer: AnswerCard) {
         show(.answer(answer)) { if case .answer = $0 { true } else { false } }
+        guard let id = cards.first(where: { if case .answer = $0.kind { true } else { false } })?.id else { return }
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(id) }
+    }
+
+    /// Puts a card just right of the card in focus (a page, a notebook), sliding that card left
+    /// (not past the chips) to make room, and below the phone panel when it would run under it.
+    private func dock(_ id: UUID) {
+        guard let pageID = focusedID, pageID != id, let page = index(of: pageID), !cards[page].isFolded,
+              let index = index(of: id) else { return }
+        let pageSize = cards[page].size, size = cards[index].size
+        let hasChips = cards.contains(where: \.isFolded)
+        let leftmost = hasChips ? 28 + Card.chipSize.width + 20 : 20
+        let rightmost = canvasSize.width - 20
+        var pageMinX = cards[page].frame.minX
+        if pageMinX + pageSize.width + 20 + size.width > rightmost {
+            pageMinX = max(leftmost, rightmost - size.width - 20 - pageSize.width)
+        }
+        cards[page].center.x = pageMinX + pageSize.width / 2
+        let x = pageMinX + pageSize.width + 20 + size.width / 2
+        var top = cards[page].frame.minY
+        if x + size.width / 2 > canvasSize.width - 320 { top = max(top, panelHeight + 12) }
+        // Clear of the voice bar at the bottom middle, unless it's off to the right of it.
+        let clearOfVoiceBar = x - size.width / 2 > canvasSize.width / 2 + 260
+        top = min(top, canvasSize.height - size.height - (clearOfVoiceBar ? 20 : 90))
+        cards[index].center = CGPoint(x: x, y: top + size.height / 2)
+        if cards[index].frame.intersects(cards[page].frame) {
+            // Too narrow for both: the answer goes on top, where it's read first.
+            let card = cards.remove(at: index)
+            cards.append(card)
+        }
     }
 
     /// Shows where something came from without a hover, for voice and snapshots.
@@ -753,6 +931,26 @@ extension CanvasModel {
 
     func provenance(for target: HoverTarget) -> Provenance? {
         switch target {
+        case .labStep(let cardID, let index):
+            guard case .notebook(let card)? = card(cardID)?.kind, card.notebook.steps.indices.contains(index) else { return nil }
+            let step = card.notebook.steps[index]
+            let reading = [step.cup.map { cup in step.celsius.map { "Cup \(cup.rawValue): \(String(format: "%.1f", $0)) °C then" } ?? "Cup \(cup.rawValue)" },
+                           step.event?.description].compactMap { $0 }.joined(separator: "\n")
+            let origin = card.isRehearsal ? "Rehearsal: scripted speech, simulated probes"
+                : "Recorded \(card.date.formatted(date: .omitted, time: .shortened)), at \(clockTime(step.seconds)) into the session"
+            return Provenance(heading: "\(clockTime(step.seconds)) · \(step.did)", origin: origin, quote: step.said,
+                              formula: reading.isEmpty ? nil : reading, crop: card.frame(at: step.seconds))
+        case .passage(let cardID, let index):
+            guard case .notes(let card)? = card(cardID)?.kind, let (document, passage) = passage(cardID, index) else { return nil }
+            let crop = box(for: passage.location, in: document).flatMap { PageCrop.around($0, in: document.image) }
+            if card.linked.notes.indices.contains(index) {
+                let note = card.linked.notes[index]
+                return Provenance(heading: "Your note: “\(note.note)”", origin: origin(of: document), quote: passage.quote,
+                                  formula: note.paperSays.map { "The paper says: \($0)" }, crop: crop?.image, highlight: crop?.highlight)
+            }
+            let direction = card.linked.directions[index - card.linked.notes.count]
+            return Provenance(heading: direction.title, origin: origin(of: document), quote: passage.quote,
+                              formula: direction.why, crop: crop?.image, highlight: crop?.highlight)
         case .fact(let documentID, let key):
             guard let document = documents[documentID], let fact = document.reading.fact(key) else { return nil }
             let crop = document.factBoxes[key].flatMap { PageCrop.around($0, in: document.image) }
@@ -760,7 +958,7 @@ extension CanvasModel {
                               quote: fact.quote, crop: crop?.image, highlight: crop?.highlight)
         case .catchItem(let documentID, let title):
             guard let document = documents[documentID],
-                  let item = document.reading.catches.first(where: { $0.title == title }) else { return nil }
+                  let item = document.reading.allCatches.first(where: { $0.title == title }) else { return nil }
             let crop = document.catchBoxes[title].flatMap { PageCrop.around($0, in: document.image) }
             return Provenance(heading: item.title, origin: origin(of: document), quote: item.quote,
                               formula: item.explanation, crop: crop?.image, highlight: crop?.highlight)
@@ -778,13 +976,20 @@ extension CanvasModel {
                     return loanProvenance(loan, pitchMonths: months, document: document, fallback: "the page", name: name)
                 case .recurring(let cost):
                     return recurringProvenance(cost, document: document)
-                case .breakdown(let items):
-                    let total = items.compactMap(\.value).reduce(0, +)
+                case .breakdown(let breakdown):
+                    let terms = breakdown.lines.enumerated().map { index, line in
+                        let amount = dollars(abs(line.value), cents: true)
+                        return index == 0 ? amount : (line.value < 0 ? "− \(amount)" : "+ \(amount)")
+                    }
+                    let check = breakdown.matchesPage ? "matches the page" : "the page says \(dollars(breakdown.printed, cents: true))"
                     return Provenance(
-                        heading: "Total: \(dollars(total, cents: true))",
-                        origin: "Worked out by Grasp from the charges on the page",
-                        formula: items.map { $0.asPrinted }.joined(separator: " + "),
-                        inputs: items.map { Provenance.Input(label: $0.label, value: $0.asPrinted, source: "on the page: “\($0.quote)”") }
+                        heading: "\(breakdown.label): \(dollars(breakdown.total, cents: true))",
+                        origin: "Added up by Grasp from the lines on the page; \(check)",
+                        formula: terms.joined(separator: " ") + " = \(dollars(breakdown.total, cents: true))",
+                        inputs: breakdown.lines.map { line in
+                            Provenance.Input(label: line.label, value: dollars(line.value, cents: true),
+                                             source: line.quote.map { "on the page: “\($0)”" } ?? "on the page")
+                        }
                     )
                 case .none:
                     return nil

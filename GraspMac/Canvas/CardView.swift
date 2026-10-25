@@ -7,6 +7,8 @@ struct CardView: View {
     let isMergeCandidate: Bool
     /// Over the trash: letting go deletes it.
     var isTrashTarget = false
+    /// What questions and commands go to, when there's more than one card.
+    var isFocused = false
     let probes: ProbeHub
 
     var body: some View {
@@ -38,6 +40,15 @@ struct CardView: View {
 
     @ViewBuilder
     private var content: some View {
+        if card.isFolded, case .document(let document) = card.kind {
+            FoldedPageView(document: document)
+        } else {
+            unfolded
+        }
+    }
+
+    @ViewBuilder
+    private var unfolded: some View {
         switch card.kind {
         case .loan(let loan):
             LoanCardView(cardID: card.id, card: loan, style: card.style)
@@ -55,10 +66,15 @@ struct CardView: View {
             DocumentCardView(cardID: card.id, document: document)
         case .answer(let answer):
             AnswerCardView(cardID: card.id, card: answer)
+        case .notes(let notes):
+            NotesCardView(cardID: card.id, card: notes)
+        case .notebook(let notebook):
+            NotebookCardView(cardID: card.id, card: notebook)
         }
     }
 
     private var padding: CGFloat {
+        if card.isFolded { return 10 }
         if case .scan = card.kind { return 16 }
         return 20
     }
@@ -66,12 +82,53 @@ struct CardView: View {
     private var borderColor: Color {
         if isTrashTarget { return Theme.warn }
         if isMergeCandidate { return Theme.accent }
-        return isHeld ? Theme.hot : Theme.line
+        if isHeld { return Theme.hot }
+        return isFocused ? Theme.accent : Theme.line
     }
 
     private var borderWidth: CGFloat {
         if isTrashTarget || isMergeCandidate { return 3 }
-        return isHeld ? 2 : 1
+        return isHeld || isFocused ? 2 : 1
+    }
+}
+
+/// A page out of focus: what it is and what's wrong with it. Grab or click it to open it.
+struct FoldedPageView: View {
+    let document: PageDocument
+
+    var body: some View {
+        let mistakes = document.reading.mismatches.count
+        let catches = document.reading.allCatches.count - mistakes
+        HStack(spacing: 10) {
+            Image(nsImage: document.image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 34, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(document.reading.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    if mistakes > 0 {
+                        Text(mistakes == 1 ? "1 doesn't add up" : "\(mistakes) don't add up")
+                            .foregroundStyle(Theme.warn)
+                    }
+                    if catches > 0 {
+                        Text("\(catches) catch\(catches == 1 ? "" : "es")")
+                            .foregroundStyle(Theme.hot)
+                    }
+                    if mistakes == 0 && catches == 0 {
+                        Text(document.reading.kind)
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
     }
 }
 

@@ -36,12 +36,17 @@ public struct GeminiClient: Sendable {
         APIKeys.gemini.map { GeminiClient(apiKey: $0) }
     }
 
-    /// Sends `prompt` (and `jpeg`, if any) and decodes the JSON answer as `T`.
-    /// `schema` is a Gemini response schema; its property names should be snake_case.
-    public func generate<T: Decodable>(_ type: T.Type, prompt: String, jpeg: Data? = nil, schema: [String: Any]) async throws -> T {
+    /// Sends `prompt` (and `jpeg`, if any, or several `images`, each after its caption) and decodes
+    /// the JSON answer as `T`. `schema` is a Gemini response schema; its property names should be snake_case.
+    public func generate<T: Decodable>(_ type: T.Type, prompt: String, jpeg: Data? = nil,
+                                       images: [(caption: String, jpeg: Data)] = [], schema: [String: Any]) async throws -> T {
         var parts: [[String: Any]] = []
         if let jpeg {
             parts.append(["inlineData": ["mimeType": "image/jpeg", "data": jpeg.base64EncodedString()]])
+        }
+        for image in images {
+            parts.append(["text": image.caption])
+            parts.append(["inlineData": ["mimeType": "image/jpeg", "data": image.jpeg.base64EncodedString()]])
         }
         parts.append(["text": prompt])
 
@@ -185,8 +190,20 @@ public struct FunctionCall: Sendable, Equatable {
 
     public func number(_ key: String) -> Double? {
         if case .number(let value)? = arguments[key] { return value }
-        if case .text(let text)? = arguments[key] { return Double(text) }
+        // "$26,500" or "29.99%" sent as text.
+        if case .text(let text)? = arguments[key] { return Double(text.filter { $0.isNumber || $0 == "." || $0 == "-" }) }
         return nil
+    }
+
+    public func numbers(_ key: String) -> [Double] {
+        guard case .list(let values)? = arguments[key] else { return number(key).map { [$0] } ?? [] }
+        return values.compactMap { value in
+            switch value {
+            case .number(let number): number
+            case .text(let text): Double(text.filter { $0.isNumber || $0 == "." || $0 == "-" })
+            default: nil
+            }
+        }
     }
 
     public func flag(_ key: String) -> Bool? {

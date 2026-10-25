@@ -4,13 +4,15 @@ import UniformTypeIdentifiers
 @main
 struct GraspMacApp: App {
     @State private var canvas: CanvasModel
-    @State private var hands = HandPipeline()
-    @State private var phone = PhoneLink()
+    @State private var hands: HandPipeline
+    @State private var phone: PhoneLink
     @State private var paper: PaperReader
-    @State private var probes = ProbeHub()
+    @State private var probes: ProbeHub
     @State private var voice: VoiceController
     @State private var money: MoneyMode
     @State private var asker: Asker
+    @State private var researcher: Researcher
+    @State private var lab: LabSession
 
     init() {
         let canvas = CanvasModel()
@@ -19,17 +21,26 @@ struct GraspMacApp: App {
         _canvas = State(initialValue: canvas)
         _paper = State(initialValue: PaperReader(canvas: canvas))
         _money = State(initialValue: money)
+        let researcher = Researcher(canvas: canvas)
+        let hands = HandPipeline(), phone = PhoneLink(), probes = ProbeHub()
+        let lab = LabSession(canvas: canvas, probes: probes, phone: phone, hands: hands)
+        _hands = State(initialValue: hands)
+        _phone = State(initialValue: phone)
+        _probes = State(initialValue: probes)
         _asker = State(initialValue: asker)
-        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker))
+        _researcher = State(initialValue: researcher)
+        _lab = State(initialValue: lab)
+        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab))
     }
 
     var body: some Scene {
         Window("Grasp", id: "canvas") {
-            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker)
+            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab)
                 .frame(minWidth: 960, minHeight: 640)
                 .task {
                     phone.onCapture = { [paper] id, jpeg in paper.read(jpeg: jpeg, captureID: id) }
                     paper.onHighlights = { [phone] id, boxes in phone.sendHighlights(boxes, for: id) }
+                    paper.onPage = { [researcher] document in researcher.pageRead(document) }
                     hands.onHands = { [voice] hands in voice.handsChanged(hands) }
                     money.isTakingCommand = { [voice] in voice.isBusy }
                     asker.onPointAt = { [phone] capture, box in phone.sendHighlights([box], for: capture) }
@@ -56,6 +67,16 @@ struct GraspMacApp: App {
                 Button("Ask Anything…") { asker.askByTyping() }
                     .keyboardShortcut("k")
             }
+            CommandMenu("Research") {
+                Button("Check My Notes Against the Paper…") { researcher.linkNotesByTyping() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
+                Button(lab.isRecording ? "Stop Lab Notes and Write Them Up" : "Start Lab Notes") { Task { await lab.toggle() } }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Rehearse a Lab Session") { Task { await lab.rehearse() } }
+                Button("Save Lab Notebook") { _ = lab.save() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
             CommandMenu("Money") {
                 Button("What to Say") { Task { await money.whatToSay() } }
                     .keyboardShortcut("j")
@@ -73,7 +94,7 @@ struct GraspMacApp: App {
                     .keyboardShortcut("t")
                 Button("Demo Cards") { canvas.resetLayout() }
                     .keyboardShortcut("r")
-                Button("Delete Front Card") { canvas.deleteFrontCard() }
+                Button("Delete Card in Focus") { canvas.deleteFocusedCard() }
                     .keyboardShortcut(.delete, modifiers: [])
                 Button("Clear Canvas") { canvas.clearCanvas() }
                     .keyboardShortcut(.delete, modifiers: [.command, .shift])
@@ -96,7 +117,7 @@ struct GraspMacApp: App {
     }
 
     private func saveSnapshot(to url: URL) -> Bool {
-        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, isSnapshot: true)
+        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, isSnapshot: true)
         return CanvasSnapshot.save(view, size: canvas.canvasSize, to: url)
     }
 
@@ -124,6 +145,19 @@ struct GraspMacApp: App {
                     try? await Task.sleep(for: .seconds(9))
                 case let step where step.hasPrefix("ask:"):
                     await asker.ask(String(step.dropFirst(4)))
+                case let step where step.hasPrefix("hovernote"):
+                    // hovernote2: the passage behind the second note.
+                    let index = (Int(step.dropFirst(9)) ?? 1) - 1
+                    if let card = canvas.cards.last(where: { if case .notes = $0.kind { true } else { false } }) {
+                        canvas.showSource(of: .passage(card: card.id, index: index))
+                    }
+                case "lab": await lab.rehearse()
+                case let step where step.hasPrefix("hoverstep"):
+                    // hoverstep4: the fourth step of the lab notebook.
+                    let index = (Int(step.dropFirst(9)) ?? 1) - 1
+                    if let card = canvas.cards.last(where: { if case .notebook = $0.kind { true } else { false } }) {
+                        canvas.showSource(of: .labStep(card: card.id, index: index))
+                    }
                 case "hoveranswer":
                     if let card = canvas.cards.last(where: { if case .answer = $0.kind { true } else { false } }) {
                         canvas.showSource(of: .answerSource(card: card.id, index: 0))

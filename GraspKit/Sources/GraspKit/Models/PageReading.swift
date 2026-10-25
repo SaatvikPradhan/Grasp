@@ -44,15 +44,18 @@ public struct PageReading: Codable, Sendable, Equatable {
         public var severity: Severity
         /// Dollars at stake, when the page says.
         public var cost: Double?
+        /// The number as printed, when the catch is about one number: finds it on the page.
+        public var printed: String?
 
         public var id: String { title }
 
-        public init(title: String, explanation: String, quote: String, severity: Severity, cost: Double? = nil) {
+        public init(title: String, explanation: String, quote: String, severity: Severity, cost: Double? = nil, printed: String? = nil) {
             self.title = title
             self.explanation = explanation
             self.quote = quote
             self.severity = severity
             self.cost = cost
+            self.printed = printed
         }
     }
 
@@ -103,14 +106,56 @@ public struct PageReading: Codable, Sendable, Equatable {
     public var facts: [Fact]
     public var catches: [Catch]
     public var model: ModelHint
+    /// Printed numbers that should follow from other printed numbers (a total, hours × rate, a
+    /// percentage). Gemini says which numbers go together; Swift does the arithmetic.
+    public var relations: [Relation]?
+    /// Every line of text on the page, read separately by Vision after Gemini. A number counts as
+    /// printed if it's one of the facts or on one of these lines.
+    public var lines: [String]?
 
-    public init(kind: String, title: String, summary: String, facts: [Fact], catches: [Catch], model: ModelHint) {
+    /// A printed result and the printed numbers it should come from.
+    public struct Relation: Codable, Sendable, Equatable {
+        public enum Kind: String, Codable, Sendable {
+            case sum, product
+            /// inputs are [percent, base]: 6.2% of 425.25.
+            case percentOf = "percent_of"
+        }
+
+        /// One printed number, with the line it's on.
+        public struct Input: Codable, Sendable, Equatable {
+            public var label: String
+            public var value: Double
+
+            public init(label: String, value: Double) {
+                self.label = label
+                self.value = value
+            }
+        }
+
+        public var label: String
+        public var kind: Kind
+        public var stated: Double
+        public var inputs: [Input]
+
+        public var values: [Double] { inputs.map(\.value) }
+
+        public init(label: String, kind: Kind, stated: Double, inputs: [Input]) {
+            self.label = label
+            self.kind = kind
+            self.stated = stated
+            self.inputs = inputs
+        }
+    }
+
+    public init(kind: String, title: String, summary: String, facts: [Fact], catches: [Catch], model: ModelHint,
+                relations: [Relation]? = nil) {
         self.kind = kind
         self.title = title
         self.summary = summary
         self.facts = facts
         self.catches = catches
         self.model = model
+        self.relations = relations
     }
 
     public func fact(_ key: String?) -> Fact? {
@@ -215,11 +260,31 @@ public struct RecurringCost: Equatable, Sendable {
     }
 }
 
+/// A page's itemized total, added up again in Swift.
+public struct Breakdown: Equatable, Sendable {
+    public struct Line: Equatable, Sendable {
+        public var label: String
+        public var value: Double
+        /// The words on the page it's printed with, when found.
+        public var quote: String?
+    }
+
+    /// The total's name on the page: "Total new charges".
+    public var label: String
+    public var lines: [Line]
+    /// The total as printed.
+    public var printed: Double
+
+    /// Swift's sum of the lines, to the cent.
+    public var total: Double { (lines.map(\.value).reduce(0, +) * 100).rounded() / 100 }
+    public var matchesPage: Bool { abs(total - printed) < 0.011 || (printed == printed.rounded() && abs(total - printed) < 0.51) }
+}
+
 /// The model a page's numbers support, worked out in Swift.
 public enum PageModel: Equatable, Sendable {
     case loan(LoanTerms)
     case recurring(RecurringCost)
-    case breakdown([PageReading.Fact])
+    case breakdown(Breakdown)
     case none
 }
 
@@ -241,14 +306,145 @@ extension PageReading {
                 months: (checked(model.months) ?? lengths.max()).map { Int($0.rounded()) } ?? 12,
                 promoMonthly: promoMonths > 0 ? checked(model.promoPrice).map(abs) : nil,
                 promoMonths: promoMonths,
-                extraMonthly: (model.extraMonthly ?? []).compactMap { checked($0) }.reduce(0, +),
+                // A late fee on this month's bill isn't a monthly cost.
+                extraMonthly: (model.extraMonthly ?? []).filter { !isPenalty($0) }.compactMap { checked($0) }.reduce(0, +),
                 upfront: (model.upfront ?? []).filter { !isPenalty($0) }.compactMap { checked($0).map(abs) }.reduce(0, +)
             ))
         case .breakdown:
-            let items = facts.filter { $0.unit == .dollars && $0.value != nil }
-            return items.isEmpty ? .none : .breakdown(items)
+            return mainBreakdown.map(PageModel.breakdown) ?? .none
         case .none:
             return .none
         }
+    }
+}
+
+// MARK: - Does it add up?
+
+extension PageReading {
+    /// The page's main itemized total: the sum with the most lines, every one of them on the page.
+    /// (Adding up every dollar figure would mix in subtotals, net pay and balances.)
+    public var mainBreakdown: Breakdown? {
+        let sums = (relations ?? []).filter { $0.kind == .sum && $0.inputs.count >= 2 && spot(of: $0.stated) != nil }
+        for relation in sums.sorted(by: { $0.inputs.count > $1.inputs.count }) {
+            let values = relation.inputs.compactMap(printedValue)
+            guard values.count == relation.inputs.count else { continue }
+            let lines = zip(relation.inputs, values).map { input, value in
+                Breakdown.Line(label: input.label, value: value, quote: spot(of: value)?.quote)
+            }
+            return Breakdown(label: relation.label, lines: lines, printed: relation.stated)
+        }
+        return nil
+    }
+}
+
+extension PageReading {
+    /// A printed result that doesn't match the printed numbers it comes from.
+    public struct Mismatch: Equatable, Sendable {
+        public var relation: Relation
+        /// What the numbers actually give.
+        public var expected: Double
+        /// Printed minus expected: positive means the page says too much.
+        public var difference: Double { relation.stated - expected }
+    }
+
+    /// Every relation that doesn't hold, worked out in Swift. Only numbers that are really on
+    /// the page take part, so a misread can't invent a mistake.
+    public var mismatches: [Mismatch] {
+        let outcomes = (relations ?? []).map { (relation: $0, outcome: check($0)) }
+        // The same total can be listed twice (two looks at the page). If any listing of it adds
+        // up, trust that one: a missed mistake is better than a false alarm.
+        func holds(_ relation: Relation) -> Bool {
+            outcomes.contains { item in
+                if case .holds = item.outcome { return item.relation.kind == relation.kind && abs(item.relation.stated - relation.stated) < 0.006 }
+                return false
+            }
+        }
+        var seen: Set<String> = []
+        return outcomes.compactMap { item in
+            guard case .wrong(let mismatch) = item.outcome, !holds(item.relation),
+                  seen.insert("\(item.relation.kind.rawValue) \(String(format: "%.2f", item.relation.stated))").inserted else { return nil }
+            return mismatch
+        }
+    }
+
+    private enum Outcome {
+        case holds, wrong(Mismatch)
+        /// A number isn't on the page, so Swift can't say.
+        case unchecked
+    }
+
+    private func check(_ relation: Relation) -> Outcome {
+        let values = relation.inputs.compactMap(printedValue)
+        guard spot(of: relation.stated) != nil, values.count == relation.inputs.count else { return .unchecked }
+        let expected: Double
+        switch relation.kind {
+        case .sum:
+            guard values.count >= 2 else { return .unchecked }
+            expected = values.reduce(0, +)
+        case .product:
+            guard values.count == 2 else { return .unchecked }
+            expected = values[0] * values[1]
+        case .percentOf:
+            guard values.count == 2 else { return .unchecked }
+            expected = values[0] / 100 * values[1]
+        }
+        // Printed amounts are rounded to the cent (or to the dollar on some pages).
+        let rounded = (expected * 100).rounded() / 100
+        var tolerance = relation.stated == relation.stated.rounded() && abs(relation.stated) >= 100 ? 0.51 : 0.011
+        // 36 payments of a rounded $25 can come to $899.99.
+        if relation.kind == .product { tolerance += 0.005 * min(abs(values[0]), abs(values[1])) }
+        guard abs(rounded - relation.stated) > tolerance else { return .holds }
+        var checked = relation
+        for index in checked.inputs.indices { checked.inputs[index].value = values[index] }
+        return .wrong(Mismatch(relation: checked, expected: rounded))
+    }
+
+    /// The catches, with anything that doesn't add up first.
+    public var allCatches: [Catch] {
+        let found = mismatches.map { mismatch in
+            let stated = spot(of: mismatch.relation.stated)
+            let direction = mismatch.difference > 0 ? "too high" : "too low"
+            return Catch(
+                title: "Doesn't add up: \(mismatch.relation.label)",
+                explanation: "The page says \(Self.money(mismatch.relation.stated)), but the numbers give \(Self.money(mismatch.expected)): \(Self.money(abs(mismatch.difference))) \(direction).",
+                quote: stated?.quote ?? Self.money(mismatch.relation.stated),
+                severity: .high,
+                cost: abs(mismatch.difference),
+                printed: stated?.printed
+            )
+        }
+        // The reader may have noticed the same number; Swift's version has the math.
+        let quotes = Set(found.map(\.quote))
+        return found + catches.filter { !quotes.contains($0.quote) }
+    }
+
+    /// An input's number as printed: Gemini's number if it's on the page, or else the number on the
+    /// line its label names. (Asked for a total that's wrong, a model will sometimes quietly "fix" an
+    /// input so it adds up: 1,200 × 12 for a $1,150 rent.)
+    func printedValue(of input: Relation.Input) -> Double? {
+        if spot(of: input.value) != nil { return input.value }
+        let label = input.label.lowercased().trimmingCharacters(in: .whitespaces)
+        guard label.count >= 4 else { return nil }
+        let named = facts.filter { $0.value != nil && $0.label.lowercased() == label }
+        let quoted = facts.filter { $0.value != nil && $0.quote.lowercased().contains(label) }
+        guard let fact = named.count == 1 ? named[0] : quoted.count == 1 ? quoted[0] : nil, let value = fact.value else { return nil }
+        return input.value < 0 ? -abs(value) : abs(value)
+    }
+
+    /// Where a number is printed: the fact it was read as, or else the line of the page it's on.
+    func spot(of number: Double) -> (quote: String, printed: String?)? {
+        if let fact = source(of: number) { return (fact.quote, fact.asPrinted) }
+        // 6.2 may be printed "6.2" or "6.20"; 1150 may be "1,150" or "1,150.00".
+        let short = String(abs(number)).replacing(#/\.0$/#, with: "")
+        let forms = [String(format: "%.2f", abs(number)), Self.plain(abs(number)), short]
+        for line in lines ?? [] {
+            let digits = line.replacingOccurrences(of: ",", with: "")
+            if forms.contains(where: { Self.contains($0, in: digits) }) { return (line, nil) }
+        }
+        return nil
+    }
+
+    private static func money(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD"))
     }
 }

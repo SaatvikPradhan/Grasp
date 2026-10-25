@@ -6,7 +6,7 @@ Five realistic sample documents for the build-plan task "Try five real documents
 
 There are two kinds of problems:
 - **Catches** are in the fine print. Grasp's reader is asked to find these, so they should show in red on the card.
-- **Mistakes** are numbers that don't add up. The reader is told not to calculate, so it may not flag these by itself. Ask Grasp ("Does the total add up?") and it checks with Swift's arithmetic tool.
+- **Mistakes** are numbers that don't add up. Grasp finds these by itself: the reader lists the page's arithmetic and Swift redoes it, so each one shows first on the card as "Doesn't add up". Ask ("Does the total add up?") for the details.
 
 ---
 
@@ -114,6 +114,25 @@ Valley State University 2027–28 offer: "$28,300 in aid · $0 remaining · You'
 - **Deadline pressure:** "accept by May 1 or it may be reduced".
 
 **Ask:** "Am I really fully covered?" · "How much of this is free money?" · "How much will I actually owe this year?" · "Does the cost add up?"
+
+---
+
+## 6. A paper and someone's notes on it · `research-paper.html`, `paper-notes.html`
+
+"Lids, Sleeves and the Cooling of Hot Drinks" (made-up data) and a student's handwritten-style notes. Read the paper first, then the notes: the notes turn into a card beside the paper.
+
+| Note | Should be marked | Why |
+|---|---|---|
+| 1. k goes from 0.031 to 0.019 per minute | matches | Abstract |
+| 2. With a lid it takes 25 minutes to reach 60 °C | differs | The paper says 23.5 minutes |
+| 3. They ran 20 trials | differs | 12 trials per condition |
+| 4. Room was kept at 21 °C | matches | Methods |
+| 5. Ceramic cooled slower the whole time | differs | Ceramic lost heat faster for the first five minutes |
+| 6. Stirring made it cool faster | not in the paper | They didn't stir |
+| 7. Evaporation explains most of the lid effect | differs | Not measured; expected to explain "part" |
+| 8. Sleeves don't matter | matches | "A sleeve made no measurable difference" |
+
+**Directions** should grow from section 4: weigh the cup to measure evaporation, other fill volumes, double-walled cups, and lids with the drinking hole open or closed.
 
 ---
 

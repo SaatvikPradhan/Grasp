@@ -6,7 +6,8 @@ struct PaperPanel: View {
     let reader: PaperReader
 
     var body: some View {
-        if reader.state != .idle {
+        // A page that became a card says it all there; the panel would only repeat it.
+        if reader.state != .idle, !reader.state.isPage {
             VStack(alignment: .leading, spacing: 8) {
                 header
                 switch reader.state {
@@ -27,8 +28,8 @@ struct PaperPanel: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(page.title).font(.system(size: 15, weight: .semibold)).lineLimit(2)
                         Text(page.summary).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(3)
-                        if !page.catches.isEmpty {
-                            Text("\(page.catches.count) catch\(page.catches.count == 1 ? "" : "es") in the fine print")
+                        if !page.allCatches.isEmpty {
+                            Text("\(page.allCatches.count) catch\(page.allCatches.count == 1 ? "" : "es") on the page")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Theme.warn)
                         }
@@ -120,5 +121,11 @@ struct PaperPanel: View {
 
     private func dollars(_ value: Double, cents: Bool = false) -> String {
         value.formatted(.currency(code: "USD").precision(.fractionLength(cents ? 2 : 0)))
+    }
+}
+
+private extension PaperReader.State {
+    var isPage: Bool {
+        if case .page = self { true } else { false }
     }
 }

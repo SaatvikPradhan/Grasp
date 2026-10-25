@@ -51,8 +51,8 @@ enum PageText {
             facts[fact.key] = box(printed: fact.asPrinted, quote: fact.quote)
         }
         var catches: [String: CGRect] = [:]
-        for item in reading.catches {
-            catches[item.title] = box(printed: nil, quote: item.quote)
+        for item in reading.allCatches {
+            catches[item.title] = box(printed: item.printed, quote: item.quote)
         }
         return (facts, catches)
     }
