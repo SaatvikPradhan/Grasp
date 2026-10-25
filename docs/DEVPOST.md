@@ -39,7 +39,7 @@ Grasp is one engine. Hand it anything with numbers on it: hold a page up to the 
 - **Receipts for every number.** Each fact keeps the exact words it came from, and Apple Vision finds those words on the photo. Hover any number for its crop of the page, or for a computed number, the formula and where each input came from.
 - **Does it add up?** Every total, rate and percentage on the page is rechecked in Swift. A wrong one shows up as a red catch with the right number.
 - **Hold it with your hands.** The Mac's webcam tracks both hands. Pinch to drag a card, twist your wrist like a dial to change a loan's term or a paper's cooling rate, push two offers together to compare them, give a thumbs up to put a card away, and pull two pinches apart to deep-dive into anything.
-- **Ask it anything.** Make a fist or hold Space and ask. The answer is read aloud by ElevenLabs, with the source sentence highlighted on the page. Follow-ups work, and the numbers come from Swift calculator tools, never from the model.
+- **Ask it anything.** Make a fist or hold Space and ask, or press ⌘K and type it when the room is too loud. The answer is read aloud by ElevenLabs, with the source sentence highlighted on the page. Follow-ups work, and the numbers come from Swift calculator tools, never from the model.
 - **Money.** A car contract becomes a true-cost chart: twist from 72 to 48 months and see $2,204 saved. Push in a credit union quote to compare, and Grasp tells you what to say to the dealer. A phone bill becomes a dispute letter ($42.00 to get back on our sample bill), and every page with money on it gets a "What to do" plan checked against current prices on the web, with sources.
 - **Research.** A paper becomes a live model: its equation and each condition's rate, run in Swift, with every reported result re-derived. On our sample paper it catches a table row that its own equation contradicts. Push the model into the live cup chart and Grasp fits your cups' cooling rate, with an error bar, against the paper's.
 - **A guided experiment.** Hand Grasp the protocol and say "I'm starting the experiment." Each step is read aloud and shown on the bench's LCD. The temperature probes confirm each pour, the phone's camera confirms what the probes can't, and you never touch the laptop: "done", "go back", "say that again" and "we're done" work hands-free.
@@ -126,7 +126,7 @@ dht11
 ## "Try it out" links
 
 - GitHub: https://github.com/SaatvikPradhan/Grasp
-- Demo video: [YouTube link, under 2 minutes]
+- Demo video: [YouTube link, 5 minutes]
 
 ## Image gallery
 
@@ -155,7 +155,7 @@ Upload in this order from `media/screens/` (each 1920 × 1280, 3:2). Captions:
 ## Before you submit
 
 - [ ] Team members added: [team names]
-- [ ] Demo video under 2 minutes uploaded and linked
+- [ ] 5-minute demo video on YouTube, linked (script: `docs/VIDEO-SCRIPT.md`)
 - [ ] Tracks: Grand Prize, FNB, Research, Nittany AI
 - [ ] MLH prizes: Best Use of Gemini, ElevenLabs, Tiger Data, GoDaddy Registry (if the domain is registered)
 - [ ] GitHub repository is public

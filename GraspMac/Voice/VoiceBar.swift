@@ -8,6 +8,9 @@ struct VoiceBar: View {
     let asker: Asker
     let lab: LabSession
 
+    @Environment(\.isCanvasSnapshot) private var isSnapshot
+    @FocusState private var typingFocused: Bool
+
     var body: some View {
         HStack(spacing: 10) {
             if lab.isRecording {
@@ -49,9 +52,38 @@ struct VoiceBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Capsule().fill(Theme.surface.opacity(voice.phase == .idle ? 0.6 : 0.95)))
-        .overlay(Capsule().stroke(voice.phase == .listening ? Theme.hot : Theme.line, lineWidth: voice.phase == .listening ? 2 : 1))
+        .overlay(Capsule().stroke(voice.phase == .listening ? Theme.hot : voice.phase == .typing ? Theme.accent : Theme.line,
+                                 lineWidth: voice.phase == .listening || voice.phase == .typing ? 2 : 1))
         .animation(.spring(duration: 0.25), value: voice.phase)
-        .allowsHitTesting(false)
+        .contentShape(Capsule())
+        // A click on the quiet bar types instead of talking.
+        .onTapGesture { if voice.phase == .idle { voice.beginTyping() } }
+        .allowsHitTesting(voice.phase == .idle || voice.phase == .typing)
+    }
+
+    /// The typing field. Snapshots can't draw a text field, so they show the text instead.
+    @ViewBuilder
+    private var typingField: some View {
+        if isSnapshot {
+            Text(voice.typed.isEmpty ? "Ask a question or say what to do…" : voice.typed + "▏")
+                .foregroundStyle(voice.typed.isEmpty ? Theme.muted : Theme.ink)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 420, alignment: .leading)
+        } else {
+            TextField("Ask a question or say what to do…", text: Bindable(voice).typed)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 420)
+                .focused($typingFocused)
+                .onAppear { typingFocused = true }
+                .onSubmit { voice.submitTyped() }
+                .onExitCommand { voice.cancelTyping() }
+                // Clicking away from an empty field closes it.
+                .onChange(of: typingFocused) { _, focused in
+                    if !focused, voice.typed.isEmpty { voice.cancelTyping() }
+                }
+        }
     }
 
     @ViewBuilder
@@ -63,6 +95,8 @@ struct VoiceBar: View {
             Image(systemName: "mic.fill")
                 .foregroundStyle(Theme.hot)
                 .symbolEffect(.pulse, options: .repeating)
+        case .typing:
+            Image(systemName: "keyboard").foregroundStyle(Theme.accent)
         case .thinking:
             ProgressView().controlSize(.small)
         case .done:
@@ -76,9 +110,11 @@ struct VoiceBar: View {
     private var text: some View {
         switch voice.phase {
         case .idle:
-            Text("Make a fist to talk · or hold Space")
+            Text("Make a fist to talk · hold Space · ⌘K to type")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted)
+        case .typing:
+            typingField
         case .listening:
             Text(voice.listener.transcript.isEmpty ? "Listening… open your hand to send" : voice.listener.transcript)
                 .font(.system(size: 16, weight: .semibold))

@@ -60,7 +60,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 | **Read anything** | Any page → what it is, the numbers that matter, the catches in the fine print, and a model when the numbers allow (loan, recurring cost, breakdown) | `PageReader` (Gemini), `OfferReader` for car offers |
 | **Receipts for every number** | Each fact keeps the exact words it came from; Vision finds them on the photo. Hover any number for the photo crop, or for a computed number, the formula and its inputs | `SourceLocator`, provenance popover |
 | **Hold it** | Pinch, twist the model's dial, push two together, swipe, trash | Gesture engine |
-| **Ask anything** | Questions answered from the documents on the canvas, math done by Swift tools, the source sentence highlighted on the phone, read aloud. Follow-ups work ("and without the late fee?") | `QuestionAnswerer`, `Asker`; fist or ⌘K |
+| **Ask anything** | Questions answered from the documents on the canvas, math done by Swift tools, the source sentence highlighted on the phone, read aloud. Follow-ups work ("and without the late fee?"). Too loud to talk? ⌘K types a question or any command in the voice bar | `QuestionAnswerer`, `Asker`; fist, Space or ⌘K |
 | **Does it add up?** | Every total, hours × rate and percentage on a page is re-checked in Swift; a wrong one shows as a red catch with the right number | `PageReading.relations`, `mismatches` |
 | **Your notes, checked** | Hand it a paper, then your notes: each note is linked to its passage and marked matches / differs / not in the paper, with research directions grounded in what the paper leaves open | `NoteLinker`, `Researcher`; ⌘⇧N or "these are my notes" |
 | **Lab notes** | While recording: camera frames, speech and probe readings. Stopping writes the notebook: each step with what was said and what its probe did then, how they connect, what to try next; ⌘⇧E saves it with Methods, CSV, transcript and frames | `SensorTrace`, `LabNotebookWriter`, `LabSession`; ⌘⇧R or "start lab notes" |
@@ -343,7 +343,7 @@ Hours count from when you start. Live checklist with clock times: https://claude
 - **12:00–13:00 Rehearse FNB** — full 90 s FNB script with props; 30 s Grand opener
 - **13:00–18:00 Research mode** — firmware (3 probes out, LED commands in) · Mac serial reader → live charts · paper → live model + cup comparison · guided protocol · lab notebook with Methods and export · method map · related work · rehearse the cooling-cups run with real hot water
 - **18:00–21:00 Wow layer (in this order)** — LED cup flashes + money meter · receipt printer
-- **21:00–24:00 Freeze, rehearse, submit** — feature freeze · rehearse each script 10× · backup video of every demo · Devpost (tagline, video < 2 min, screenshots, all four tracks + MLH categories) · practice 3 pitches · pack and charge everything
+- **21:00–24:00 Freeze, rehearse, submit** — feature freeze · rehearse each script 10× · backup video of every demo · Devpost (tagline, a 5-minute YouTube video (`docs/VIDEO-SCRIPT.md`), screenshots, all four tracks + MLH categories) · practice 3 pitches · pack and charge everything
 
 **Sleep:** if you sleep, take 90 minutes after Research mode and cut from the wow layer. Never before the gates pass.
 

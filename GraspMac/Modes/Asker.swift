@@ -59,23 +59,6 @@ final class Asker {
         }
     }
 
-    /// Asks with a typed question, for when it's too loud to talk.
-    func askByTyping() {
-        let alert = NSAlert()
-        alert.messageText = "Ask Grasp anything"
-        alert.informativeText = "About the pages on the canvas: what, how much, can I, what if."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        field.placeholderString = "Can I cancel early?"
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Ask")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let question = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { return }
-        Task { await ask(question) }
-    }
-
     /// Finds a quote on one of the pages, and where it is on the photo.
     private func source(for quote: String, in documents: [PageDocument]) -> AnswerCard.Source? {
         for document in documents {

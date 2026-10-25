@@ -9,6 +9,8 @@ final class VoiceController {
     enum Phase: Equatable {
         case idle
         case listening
+        /// Typing instead of talking: a loud room, or nobody wants to talk.
+        case typing
         case thinking(heard: String)
         case done(heard: String, result: String)
         case failed(String)
@@ -16,6 +18,8 @@ final class VoiceController {
 
     private(set) var phase = Phase.idle
     let listener = SpeechListener()
+    /// What's being typed in the bar.
+    var typed = ""
 
     @ObservationIgnored private let canvas: CanvasModel
     @ObservationIgnored private let money: MoneyMode
@@ -89,7 +93,7 @@ final class VoiceController {
     func handsChanged(_ hands: [TrackedHand]) {
         // At the bench a hand around a cup or kettle looks like a fist, and "done" needs no fist.
         let fist = hands.contains(where: \.isFist) && !lab.isRecording
-        if fist, !talkingByFist, phase != .listening {
+        if fist, !talkingByFist, phase != .listening, phase != .typing {
             talkingByFist = true
             beginTalking()
         } else if !fist, talkingByFist {
@@ -115,6 +119,34 @@ final class VoiceController {
         case .unknown:
             show(.failed("Still asking for the microphone. Try again in a moment."))
         }
+    }
+
+    /// ⌘K or a click on the bar: type a question or a command, for when it's too loud to talk.
+    func beginTyping() {
+        guard phase != .typing else { return }
+        clearTask?.cancel()
+        typed = ""
+        phase = .typing
+        // Delete deletes text, not the card in focus.
+        canvas.isTyping = true
+    }
+
+    func cancelTyping() {
+        guard phase == .typing else { return }
+        canvas.isTyping = false
+        phase = .idle
+    }
+
+    /// Return: what was typed is read the way speech is, so "is this a good deal?" or "next step" works too.
+    func submitTyped() {
+        guard phase == .typing else { return }
+        canvas.isTyping = false
+        let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            phase = .idle
+            return
+        }
+        interpret(text)
     }
 
     func endTalking() {

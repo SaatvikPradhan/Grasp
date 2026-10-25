@@ -98,7 +98,8 @@ struct GraspMacApp: App {
                     .keyboardShortcut("y", modifiers: [.command, .shift])
             }
             CommandMenu("Ask") {
-                Button("Ask Anything…") { asker.askByTyping() }
+                // Typed instead of said: a question, or any command a fist would take.
+                Button("Type a Question or Command…") { voice.beginTyping() }
                     .keyboardShortcut("k")
             }
             CommandMenu("Research") {
@@ -240,6 +241,13 @@ struct GraspMacApp: App {
                 case "dispute": await disputer.write()
                 case "dive": await diver.dive()
                 case "plan": await planner.planFocusedPage()
+                case "typebox": voice.beginTyping()
+                case let step where step.hasPrefix("type:"):
+                    // type:question? asks; type:map the method runs a command, as if typed in the bar.
+                    voice.beginTyping()
+                    voice.typed = String(step.dropFirst(5))
+                    voice.submitTyped()
+                    try? await Task.sleep(for: .seconds(9))
                 case let step where step.hasPrefix("paste:"):
                     // paste:text pastes from a private pasteboard, leaving yours alone.
                     let board = NSPasteboard(name: NSPasteboard.Name("grasp-snapshot"))

@@ -18,7 +18,7 @@ Grasp is one engine, not a set of modes. Every page or video goes through it:
 | **Receipts for every number** | Hover a fact for its crop of the photo. Hover a computed number for its formula, each input traced to its words on the page. |
 | **Does it add up?** | Every total, rate and percentage is rechecked in Swift. A wrong one becomes a red catch with the right number. |
 | **Hold it** | The Mac's webcam tracks both hands: pinch, twist a dial, push two cards together, thumbs up, two-hand zoom, swipe, trash. |
-| **Ask anything** | Make a fist or hold Space. Answers are read aloud with the source sentence highlighted; Swift calculator tools do the math. |
+| **Ask anything** | Make a fist, hold Space, or type with ⌘K in a loud room. Answers are read aloud with the source sentence highlighted; Swift calculator tools do the math. |
 | **Money** | True cost of a loan, twist the term, compare offers, what to say to the dealer, a dispute letter for a bill, and a "What to do" plan checked against current prices. |
 | **Research** | A paper becomes a live model that re-derives every reported result; your cups' cooling rates are fitted against it live; a method map; related work from OpenAlex; your notes checked against the paper. |
 | **Guided experiment** | Steps read aloud and shown on the bench's LCD, pours confirmed by the probes, everything else by the camera. Hands-free: "done", "go back", "we're done". |
@@ -89,7 +89,7 @@ Useful shortcuts (every gesture has one, in the Canvas menu):
 | Keys | Does |
 |---|---|
 | Space (hold) or a fist | Talk to Grasp |
-| ⌘K | Ask about the page in focus |
+| ⌘K, or click the bar | Type a question or command (for a loud room) |
 | ⌘O / ⌘V | Read a photo or video / paste a YouTube link, photo or file |
 | ⌘J | What to say, read aloud |
 | ⌘⇧W | Write the dispute letter |
@@ -121,7 +121,7 @@ GraspPhone/   The iOS app: the camera
 firmware/     Pico W firmware
 props/        Printable demo documents and their answer key
 media/        Thumbnail and screenshots
-docs/         Sensors brief, Devpost text
+docs/         Sensors brief, Devpost text, video script
 ```
 
 [`GRASP.md`](GRASP.md) is the full project brief: features, demo scripts, math and build plan.
