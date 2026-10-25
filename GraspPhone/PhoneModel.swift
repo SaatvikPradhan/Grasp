@@ -43,6 +43,9 @@ final class PhoneModel {
     @ObservationIgnored private lazy var sender = FrameSender(link: link)
     @ObservationIgnored private let fling = FlingDetector()
     @ObservationIgnored private var testPattern: DispatchSourceTimer?
+    /// Recent captures, so the Mac can bring one back up with a spot boxed (hovering a number,
+    /// answering a question).
+    @ObservationIgnored private var captures: [(id: UUID, image: UIImage)] = []
     @ObservationIgnored private var started = false
 
     var isConnected: Bool {
@@ -63,8 +66,10 @@ final class PhoneModel {
             self?.handle(message)
         }
         sender.onCapture = { [weak self] id, jpeg in
-            guard let image = UIImage(data: jpeg) else { return }
-            self?.scan = PhoneScan(id: id, image: image)
+            guard let self, let image = UIImage(data: jpeg) else { return }
+            scan = PhoneScan(id: id, image: image)
+            captures.append((id, image))
+            if captures.count > 10 { captures.removeFirst() }
         }
         fling.onFling = { [weak self] in
             // The phone is blurry mid-flick, so send the frame from just before it.
@@ -94,8 +99,13 @@ final class PhoneModel {
         case .received(let frameID, let sentAt):
             roundTripMs = sender.acknowledge(frameID: frameID, sentAt: sentAt)
         case .highlights(let captureID, let boxes):
-            guard scan?.id == captureID else { return }
-            scan?.highlights = boxes
+            if scan?.id == captureID {
+                scan?.highlights = boxes
+            } else if let earlier = captures.last(where: { $0.id == captureID }) {
+                scan = PhoneScan(id: captureID, image: earlier.image, highlights: boxes)
+            } else {
+                return
+            }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .frame:
             break

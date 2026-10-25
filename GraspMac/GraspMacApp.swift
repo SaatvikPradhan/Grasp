@@ -10,25 +10,34 @@ struct GraspMacApp: App {
     @State private var probes = ProbeHub()
     @State private var voice: VoiceController
     @State private var money: MoneyMode
+    @State private var asker: Asker
 
     init() {
         let canvas = CanvasModel()
         let money = MoneyMode(canvas: canvas)
+        let asker = Asker(canvas: canvas, voiceOut: money.voiceOut)
         _canvas = State(initialValue: canvas)
         _paper = State(initialValue: PaperReader(canvas: canvas))
         _money = State(initialValue: money)
-        _voice = State(initialValue: VoiceController(canvas: canvas, money: money))
+        _asker = State(initialValue: asker)
+        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker))
     }
 
     var body: some Scene {
         Window("Grasp", id: "canvas") {
-            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money)
+            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker)
                 .frame(minWidth: 960, minHeight: 640)
                 .task {
                     phone.onCapture = { [paper] id, jpeg in paper.read(jpeg: jpeg, captureID: id) }
                     paper.onHighlights = { [phone] id, boxes in phone.sendHighlights(boxes, for: id) }
                     hands.onHands = { [voice] hands in voice.handsChanged(hands) }
                     money.isTakingCommand = { [voice] in voice.isBusy }
+                    asker.onPointAt = { [phone] capture, box in phone.sendHighlights([box], for: capture) }
+                    // Hovering a number on the Mac brings its page up on the phone, spot boxed.
+                    canvas.onHoverChange = { [canvas, phone] target in
+                        guard let target, let spot = canvas.phoneSpot(for: target) else { return }
+                        phone.sendHighlights([spot.box], for: spot.captureID)
+                    }
                     phone.start()
                     probes.start()
                     Task { await voice.start() }
@@ -42,6 +51,10 @@ struct GraspMacApp: App {
             CommandGroup(after: .newItem) {
                 Button("Read Image…") { openImage() }
                     .keyboardShortcut("o")
+            }
+            CommandMenu("Ask") {
+                Button("Ask Anything…") { asker.askByTyping() }
+                    .keyboardShortcut("k")
             }
             CommandMenu("Money") {
                 Button("What to Say") { Task { await money.whatToSay() } }
@@ -58,7 +71,7 @@ struct GraspMacApp: App {
                     .keyboardShortcut("d")
                 Button(canvas.showsTemperatures ? "Hide Cup Temperatures" : "Show Cup Temperatures") { canvas.toggleTemperatures() }
                     .keyboardShortcut("t")
-                Button("Reset Cards") { canvas.resetLayout() }
+                Button("Demo Cards") { canvas.resetLayout() }
                     .keyboardShortcut("r")
                 Button("Delete Front Card") { canvas.deleteFrontCard() }
                     .keyboardShortcut(.delete, modifiers: [])
@@ -83,13 +96,14 @@ struct GraspMacApp: App {
     }
 
     private func saveSnapshot(to url: URL) -> Bool {
-        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, isSnapshot: true)
+        let view = CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, isSnapshot: true)
         return CanvasSnapshot.save(view, size: canvas.canvasSize, to: url)
     }
 
     /// `GRASP_SNAPSHOT=/path/shot.png` saves one snapshot after launch, so the canvas can be
     /// checked without screen recording permission. `GRASP_SNAPSHOT_DELAY=seconds` waits longer;
-    /// `GRASP_SNAPSHOT_SETUP=quote,compare,term48,lines,advice,summary` runs the matching menu commands first.
+    /// `GRASP_SNAPSHOT_SETUP=demo,quote,compare,term48,lines,advice,summary,read:/path.jpg,hover,hovertotal` runs the
+    /// matching commands first.
     private func scheduleSnapshotFromEnvironment() {
         let environment = ProcessInfo.processInfo.environment
         guard let path = environment["GRASP_SNAPSHOT"] else { return }
@@ -99,11 +113,31 @@ struct GraspMacApp: App {
             try? await Task.sleep(for: .seconds(delay))
             for step in setup {
                 switch step {
+                case "demo": canvas.resetLayout()
                 case "quote": canvas.addDemoQuote()
                 case "compare": canvas.compareLoans()
                 case "term48": canvas.setTerm(48)
                 case "lines": canvas.toggleFrontStyle()
                 case "advice": await money.whatToSay()
+                case let step where step.hasPrefix("read:"):
+                    paper.read(fileAt: URL(filePath: String(step.dropFirst(5))))
+                    try? await Task.sleep(for: .seconds(9))
+                case let step where step.hasPrefix("ask:"):
+                    await asker.ask(String(step.dropFirst(4)))
+                case "hoveranswer":
+                    if let card = canvas.cards.last(where: { if case .answer = $0.kind { true } else { false } }) {
+                        canvas.showSource(of: .answerSource(card: card.id, index: 0))
+                    }
+                case "hover":
+                    // The first located fact on the newest document card.
+                    if let document = canvas.cards.reversed().compactMap({ canvas.document(for: $0) }).first,
+                       let fact = document.shownFacts.first(where: { document.factBoxes[$0.key] != nil }) {
+                        canvas.showSource(of: .fact(document: document.id, key: fact.key))
+                    }
+                case "hovertotal":
+                    if let card = canvas.cards.last(where: { canvas.document(for: $0) != nil }) {
+                        canvas.showSource(of: .derived(card: card.id, name: "total"))
+                    }
                 case "summary": await money.saveSummary(to: URL(filePath: path + "-summary.pdf"), open: false)
                 default: break
                 }

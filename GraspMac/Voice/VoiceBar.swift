@@ -4,6 +4,7 @@ import SwiftUI
 struct VoiceBar: View {
     let voice: VoiceController
     let money: MoneyMode
+    let asker: Asker
 
     var body: some View {
         HStack(spacing: 10) {
@@ -21,7 +22,7 @@ struct VoiceBar: View {
                 Image(systemName: "speaker.wave.2.fill")
                     .foregroundStyle(Theme.accent)
                     .symbolEffect(.variableColor.iterative, options: .repeating)
-            } else if money.isWritingAdvice {
+            } else if money.isWritingAdvice || asker.isAnswering {
                 ProgressView().controlSize(.small)
             }
             icon

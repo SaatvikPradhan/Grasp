@@ -23,6 +23,16 @@ struct PaperPanel: View {
                     }
                 case .read(let reading, _):
                     details(reading)
+                case .page(let page, _):
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(page.title).font(.system(size: 15, weight: .semibold)).lineLimit(2)
+                        Text(page.summary).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(3)
+                        if !page.catches.isEmpty {
+                            Text("\(page.catches.count) catch\(page.catches.count == 1 ? "" : "es") in the fine print")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.warn)
+                        }
+                    }
                 case .failed(let message):
                     Text(message)
                         .font(.system(size: 12))
@@ -48,7 +58,7 @@ struct PaperPanel: View {
             case .reading:
                 ProgressView().controlSize(.small)
                 Text("Reading…").font(.system(size: 12)).foregroundStyle(Theme.muted)
-            case .read(_, let seconds):
+            case .read(_, let seconds), .page(_, let seconds):
                 Text(String(format: "read in %.1f s", seconds))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.muted)

@@ -16,6 +16,8 @@ public enum VoiceCommand: Equatable, Sendable {
     case summary
     /// Throw away the card in front.
     case removeCard
+    /// Any question about the pages or numbers on the canvas.
+    case ask(String)
     /// Remove every card.
     case clearCanvas
     /// A request for something not built yet (fit, export, explain), by name.
@@ -62,6 +64,7 @@ public struct VoiceCommander: Sendable {
         case "listen_to_salesperson": return .listenToPitch(call.flag("on") ?? true)
         case "make_summary": return .summary
         case "remove_card": return .removeCard
+        case "ask_question": return call.text("question").map { .ask($0) } ?? .none
         case "clear_canvas": return .clearCanvas
         case "fit_model": return .comingSoon("fit it")
         case "export_notebook": return .comingSoon("export")
@@ -89,6 +92,8 @@ public struct VoiceCommander: Sendable {
         function("export_notebook", "Export the lab notebook, data and methods."),
         function("explain", "Explain what the chart means."),
         function("what_to_say", "Say what to ask the dealer, what to negotiate, or what to do next."),
+        function("ask_question", "Any question about the pages, numbers or charts on the canvas: what, how much, can I, what if, why, where does it say.",
+                 ["question": ["type": "STRING", "description": "The question, as asked"]]),
         function("not_a_command", "The words were not meant for Grasp."),
     ]
 

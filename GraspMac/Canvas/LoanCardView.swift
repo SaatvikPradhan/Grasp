@@ -7,6 +7,7 @@ extension LoanTerms: LoanTermsLike {}
 /// One loan's true cost: amount financed plus interest, against the salesperson's pitch.
 /// Bars show the split; lines show the total paid month by month.
 struct LoanCardView: View {
+    let cardID: UUID
     let card: LoanCard
     let style: Card.Style
 
@@ -34,10 +35,12 @@ struct LoanCardView: View {
                     .font(.system(size: 46, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.ink)
                     .contentTransition(.numericText(value: loan.totalPaid))
+                    .hoverSource(.derived(card: cardID, name: "total"))
                 Text("\(dollars(loan.monthlyPayment)) a month × \(loan.termMonths) months at \(loan.apr.formatted(.percent.precision(.fractionLength(1))))")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.muted)
                     .contentTransition(.numericText())
+                    .hoverSource(.derived(card: cardID, name: "monthly"))
             }
 
             Group {

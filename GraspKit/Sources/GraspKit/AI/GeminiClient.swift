@@ -82,7 +82,30 @@ public struct GeminiClient: Sendable {
         return generation
     }
 
+    /// One step of a conversation in which Gemini must call one of `functions`. Returns the
+    /// model's turn exactly as sent, to append to `contents` for the next step (Gemini 3 needs
+    /// its thought signatures back), and the calls it made.
+    public func toolStep(_ contents: [[String: Any]], functions: [[String: Any]]) async throws -> (turn: [String: Any], calls: [FunctionCall]) {
+        let data = try await post([
+            "contents": contents,
+            "tools": [["functionDeclarations": functions]],
+            "toolConfig": ["functionCallingConfig": ["mode": "ANY"]],
+            "generationConfig": generationConfig,
+        ])
+        let answer = try JSONDecoder().decode(Answer.self, from: data)
+        let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let turn = ((raw?["candidates"] as? [[String: Any]])?.first)?["content"] as? [String: Any] else {
+            throw Failure.noAnswer(reason: answer.reason)
+        }
+        let calls = answer.parts.compactMap(\.functionCall).map { FunctionCall(name: $0.name, arguments: $0.args ?? [:]) }
+        return (turn, calls)
+    }
+
     private func send(_ body: [String: Any]) async throws -> Answer {
+        try JSONDecoder().decode(Answer.self, from: try await post(body))
+    }
+
+    private func post(_ body: [String: Any]) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -96,7 +119,7 @@ public struct GeminiClient: Sendable {
             let message = (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.message
             throw Failure.http(status: status, message: message ?? String(decoding: data.prefix(300), as: UTF8.self))
         }
-        return try JSONDecoder().decode(Answer.self, from: data)
+        return data
     }
 
     private struct Answer: Decodable {
@@ -136,6 +159,7 @@ public struct FunctionCall: Sendable, Equatable {
         case number(Double)
         case text(String)
         case flag(Bool)
+        case list([Value])
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
@@ -143,6 +167,8 @@ public struct FunctionCall: Sendable, Equatable {
                 self = .flag(flag)
             } else if let number = try? container.decode(Double.self) {
                 self = .number(number)
+            } else if let list = try? container.decode([Value].self) {
+                self = .list(list)
             } else {
                 self = .text(try container.decode(String.self))
             }
@@ -166,5 +192,15 @@ public struct FunctionCall: Sendable, Equatable {
     public func flag(_ key: String) -> Bool? {
         if case .flag(let value)? = arguments[key] { return value }
         return nil
+    }
+
+    public func text(_ key: String) -> String? {
+        if case .text(let value)? = arguments[key] { return value }
+        return nil
+    }
+
+    public func texts(_ key: String) -> [String] {
+        guard case .list(let values)? = arguments[key] else { return text(key).map { [$0] } ?? [] }
+        return values.compactMap { if case .text(let value) = $0 { value } else { nil } }
     }
 }

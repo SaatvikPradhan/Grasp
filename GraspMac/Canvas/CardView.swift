@@ -40,7 +40,7 @@ struct CardView: View {
     private var content: some View {
         switch card.kind {
         case .loan(let loan):
-            LoanCardView(card: loan, style: card.style)
+            LoanCardView(cardID: card.id, card: loan, style: card.style)
         case .comparison(let comparison):
             ComparisonCardView(comparison: comparison, style: card.style)
         case .temperatures:
@@ -51,6 +51,10 @@ struct CardView: View {
             AdviceCardView(advice: advice)
         case .pitch(let checks):
             PitchCardView(checks: checks)
+        case .document(let document):
+            DocumentCardView(cardID: card.id, document: document)
+        case .answer(let answer):
+            AnswerCardView(cardID: card.id, card: answer)
         }
     }
 

@@ -2,7 +2,9 @@
 
 > **Grab what you see and hear. Understand it with your hands.**
 >
-> Grasp listens to what is said, reads the paper or experiment in front of it, and turns the numbers into charts on a laptop. You work the charts with bare hands: pinch to grab, twist to dial a value, push two charts together to compare. One engine, two modes: **Research** (lab bench to notebook) and **Money** (the moment you sign a loan).
+> **One thing: hand Grasp anything.** A lease, a phone bill, a loan, a credit card offer, a paper, the lab bench. It reads it, **every number shows where it came from** (hover it), you hold and twist the numbers with bare hands, and you can **ask it anything**: it answers out loud, pointing at the exact line. The car loan and the iodine clock are two rehearsed examples of the same engine, not two modes.
+>
+> Demo hook: *"Judges, hand me anything with numbers on it."*
 
 This file is the single source of truth for the project. Give it to a new Claude Code session (see "First prompt for a new session" at the end) and keep it in the repo root.
 
@@ -12,7 +14,7 @@ This file is the single source of truth for the project. Give it to a new Claude
 
 | | |
 |---|---|
-| **Product** | Grasp: a laptop canvas you control with hand gestures, an iPhone "eye", and live sensors |
+| **Product** | Grasp: hand it any page or experiment; it reads it, shows where every number came from, lets you hold the numbers, and answers any question with the source line. A laptop canvas you control with your hands, an iPhone "eye", live sensors |
 | **Stack** | One Xcode project: macOS app (brain, ~80% of code) + thin iOS app (camera) + shared Swift package `GraspKit`. Arduino or ESP32 for sensors. Gemini for all AI. ElevenLabs for voice. |
 | **Tracks entered** | Grand Prize, FNB, Research, Nittany AI, plus MLH side prizes |
 | **Estimated odds** | 94% at least one prize, 84% at least one cash prize (model estimates, see section 1) |
@@ -50,6 +52,17 @@ This file is the single source of truth for the project. Give it to a new Claude
 - **Name:** Grasp. You grab charts with your hand, and you grasp what the numbers mean.
 - **Tagline:** Grab what you see and hear. Understand it with your hands.
 - **Closing line:** "Because let's be honest, you ain't reading all that. Grasp is."
+
+### One engine (every document runs through it)
+
+| Layer | What it does | Built |
+|---|---|---|
+| **Read anything** | Any page → what it is, the numbers that matter, the catches in the fine print, and a model when the numbers allow (loan, recurring cost, breakdown) | `PageReader` (Gemini), `OfferReader` for car offers |
+| **Receipts for every number** | Each fact keeps the exact words it came from; Vision finds them on the photo. Hover any number for the photo crop, or for a computed number, the formula and its inputs | `SourceLocator`, provenance popover |
+| **Hold it** | Pinch, twist the model's dial, push two together, swipe, trash | Gesture engine |
+| **Ask anything** | Questions answered from the documents on the canvas, math done by Swift tools, the source sentence highlighted on the phone, read aloud | `QuestionAnswerer`, `Asker`; fist or ⌘K |
+
+**How it works (built Oct 24):** every page goes to three readers at once: `OfferReader` (car offers: drives the loan, compare and what-to-say cards), `PageReader` (any page: kind, summary, up to 12 facts and 5 catches with exact quotes, and a model whose inputs Swift checks are really on the page), and Vision (where each line is). `SourceLocator` matches each quote to its line, so every fact, catch and answer source has a box on the photo. Computed numbers (totals, payments) hover as their formula, each input traced to its words on the page. Answers use Swift calculator tools (`loan_payment`, `payoff_months`, `total_cost`, `arithmetic`) and are marked unchecked if any number can't be traced. The canvas starts empty ("Hand Grasp anything"); ⌘R lays out the demo cards.
 
 ### The loop (every feature runs through it)
 

@@ -19,6 +19,18 @@ final class CanvasModel {
     /// Degrees of wrist turn per dial step (12 months on a loan).
     var degreesPerStep = 20.0
 
+    /// The coordinate space cards and hover targets are measured in.
+    static let space = "canvas"
+    /// Every page read so far, so any number on the canvas can show where it came from.
+    var documents: [UUID: PageDocument] = [:]
+    /// What's being hovered, by mouse or by a hand held still over it.
+    private(set) var hovered: HoverTarget?
+    /// Called when the hovered item changes, for lighting the same spot on the phone.
+    @ObservationIgnored var onHoverChange: ((HoverTarget?) -> Void)?
+    @ObservationIgnored private var hoverFrames: [HoverTarget: CGRect] = [:]
+    @ObservationIgnored private var handHover: (target: HoverTarget, since: Date)?
+    @ObservationIgnored private var hoveredByHand = false
+
     /// What a pinching hand grabbed when the pinch began. `cardID` is nil for empty canvas.
     private struct Grip {
         var cardID: UUID?
@@ -29,13 +41,12 @@ final class CanvasModel {
     }
 
     private var grips: [Int: Grip] = [:]
-    @ObservationIgnored private var hasLaidOut = false
     private var mouseGrip: (id: UUID, startCenter: CGPoint)?
 
-    init() {
-        resetLayout()
-    }
+    /// The canvas starts empty: hand Grasp anything. ⌘R lays out the demo cards.
+    init() {}
 
+    /// The demo layout: the car loan and the cup temperatures.
     func resetLayout() {
         grips = [:]
         mergeCandidates = []
@@ -48,10 +59,6 @@ final class CanvasModel {
     func setCanvasSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         canvasSize = size
-        if !hasLaidOut {
-            hasLaidOut = true
-            resetLayout()
-        }
     }
 
     func isHeld(_ cardID: UUID) -> Bool {
@@ -94,6 +101,7 @@ final class CanvasModel {
         hands = newHands
         updateMerges()
         updateTrash()
+        updateHandHover()
     }
 
     private func track(_ hand: TrackedHand) {
@@ -532,6 +540,10 @@ final class CanvasModel {
                 "What to say to the dealer"
             case .pitch:
                 "The salesperson's pitch, checked"
+            case .document(let document):
+                "\(document.reading.title) (\(document.reading.kind))"
+            case .answer(let answer):
+                "An answer to “\(answer.question)”"
             }
         }
         return parts.isEmpty ? "Nothing yet." : parts.joined(separator: ". ") + "."
@@ -543,7 +555,7 @@ final class CanvasModel {
         cards.first { $0.id == id }
     }
 
-    private func index(of id: UUID) -> Int? {
+    func index(of id: UUID) -> Int? {
         cards.firstIndex { $0.id == id }
     }
 
@@ -616,5 +628,245 @@ final class CanvasModel {
         guard !shared.isNull else { return 0 }
         let smaller = min(a.width * a.height, b.width * b.height)
         return smaller > 0 ? shared.width * shared.height / smaller : 0
+    }
+}
+
+// MARK: - Where things come from
+
+extension CanvasModel {
+    func setHoverFrame(_ target: HoverTarget, _ frame: CGRect) {
+        hoverFrames[target] = frame
+    }
+
+    func removeHoverFrame(_ target: HoverTarget) {
+        hoverFrames[target] = nil
+        if hovered == target { setHovered(nil, byHand: false) }
+    }
+
+    func hoverFrame(_ target: HoverTarget) -> CGRect? {
+        hoverFrames[target]
+    }
+
+    func mouseHover(_ target: HoverTarget, inside: Bool) {
+        if inside {
+            setHovered(target, byHand: false)
+        } else if hovered == target, !hoveredByHand {
+            setHovered(nil, byHand: false)
+        }
+    }
+
+    /// An open hand held still over a number for a moment shows where it came from.
+    private func updateHandHover() {
+        let hand = hands.first { !$0.isPinching && !$0.isFist }
+        let point = hand.map { self.point(for: $0) }
+        let target = point.flatMap { point in
+            hoverFrames
+                .filter { $0.value.insetBy(dx: -6, dy: -6).contains(point) }
+                .min { $0.value.width * $0.value.height < $1.value.width * $1.value.height }?
+                .key
+        }
+        guard let target else {
+            handHover = nil
+            if hoveredByHand { setHovered(nil, byHand: false) }
+            return
+        }
+        if handHover?.target == target {
+            if let since = handHover?.since, Date().timeIntervalSince(since) >= 0.35 {
+                setHovered(target, byHand: true)
+            }
+        } else {
+            handHover = (target, Date())
+        }
+    }
+
+    private func setHovered(_ target: HoverTarget?, byHand: Bool) {
+        hoveredByHand = target != nil && byHand
+        guard target != hovered else { return }
+        hovered = target
+        onHoverChange?(target)
+    }
+
+    /// A page has been read: attach it to the card its scan became (a loan card from the car
+    /// readers), or turn the scan into a document card. A page with nothing on it is cleared.
+    func finishPage(_ cardID: UUID, document: PageDocument) {
+        documents[document.id] = document
+        guard let index = index(of: cardID) else { return }
+        switch cards[index].kind {
+        case .loan(var loan):
+            loan.documentID = document.id
+            cards[index].kind = .loan(loan)
+        case .scan(let scan):
+            if case .read = scan.status { return }   // a window sticker, already shown
+            guard !document.reading.facts.isEmpty || !document.reading.catches.isEmpty else {
+                setScanStatus(at: index, .failed("Nothing to read on this page."))
+                removeLater(cardID)
+                return
+            }
+            withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
+                cards[index].kind = .document(document)
+            }
+            settle(cardID)
+        default:
+            break
+        }
+    }
+
+    /// The phone capture a hovered fact or catch is on, and a box around it, for the phone to show.
+    func phoneSpot(for target: HoverTarget) -> (captureID: UUID, box: LinkHighlight)? {
+        switch target {
+        case .fact(let documentID, let key):
+            guard let document = documents[documentID], let capture = document.captureID,
+                  let rect = document.factBoxes[key], let fact = document.reading.fact(key) else { return nil }
+            return (capture, LinkHighlight(text: fact.asPrinted, rect: rect, kind: .term))
+        case .catchItem(let documentID, let title):
+            guard let document = documents[documentID], let capture = document.captureID,
+                  let rect = document.catchBoxes[title] else { return nil }
+            return (capture, LinkHighlight(text: title, rect: rect, kind: .addon))
+        case .answerSource(let cardID, let index):
+            guard case .answer(let answer)? = card(cardID)?.kind, answer.sources.indices.contains(index) else { return nil }
+            let source = answer.sources[index]
+            guard let capture = documents[source.documentID]?.captureID, let rect = source.box else { return nil }
+            return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
+        case .derived:
+            return nil
+        }
+    }
+
+    /// Shows a new answer, replacing the last one so answers don't pile up.
+    func showAnswer(_ answer: AnswerCard) {
+        show(.answer(answer)) { if case .answer = $0 { true } else { false } }
+    }
+
+    /// Shows where something came from without a hover, for voice and snapshots.
+    func showSource(of target: HoverTarget?) {
+        setHovered(target, byHand: false)
+    }
+
+    /// The page a card was read from, if any.
+    func document(for card: Card) -> PageDocument? {
+        switch card.kind {
+        case .document(let document): document
+        case .loan(let loan): loan.documentID.flatMap { documents[$0] }
+        default: nil
+        }
+    }
+
+    func provenance(for target: HoverTarget) -> Provenance? {
+        switch target {
+        case .fact(let documentID, let key):
+            guard let document = documents[documentID], let fact = document.reading.fact(key) else { return nil }
+            let crop = document.factBoxes[key].flatMap { PageCrop.around($0, in: document.image) }
+            return Provenance(heading: "\(fact.label): \(fact.asPrinted)", origin: origin(of: document),
+                              quote: fact.quote, crop: crop?.image, highlight: crop?.highlight)
+        case .catchItem(let documentID, let title):
+            guard let document = documents[documentID],
+                  let item = document.reading.catches.first(where: { $0.title == title }) else { return nil }
+            let crop = document.catchBoxes[title].flatMap { PageCrop.around($0, in: document.image) }
+            return Provenance(heading: item.title, origin: origin(of: document), quote: item.quote,
+                              formula: item.explanation, crop: crop?.image, highlight: crop?.highlight)
+        case .derived(let cardID, let name):
+            guard let card = card(cardID) else { return nil }
+            switch card.kind {
+            case .loan(let loanCard):
+                return loanProvenance(loanCard.loan, pitchMonths: loanCard.pitch.termMonths,
+                                      document: document(for: card), fallback: loanCard.source, name: name)
+            case .document(let document):
+                switch document.model {
+                case .loan(let loan):
+                    let written = document.reading.resolvedModel
+                    let months = if case .loan(let original) = written { original.termMonths } else { loan.termMonths }
+                    return loanProvenance(loan, pitchMonths: months, document: document, fallback: "the page", name: name)
+                case .recurring(let cost):
+                    return recurringProvenance(cost, document: document)
+                case .breakdown(let items):
+                    let total = items.compactMap(\.value).reduce(0, +)
+                    return Provenance(
+                        heading: "Total: \(dollars(total, cents: true))",
+                        origin: "Worked out by Grasp from the charges on the page",
+                        formula: items.map { $0.asPrinted }.joined(separator: " + "),
+                        inputs: items.map { Provenance.Input(label: $0.label, value: $0.asPrinted, source: "on the page: “\($0.quote)”") }
+                    )
+                case .none:
+                    return nil
+                }
+            default:
+                return nil
+            }
+        case .answerSource(let cardID, let index):
+            guard case .answer(let answer)? = card(cardID)?.kind, answer.sources.indices.contains(index) else { return nil }
+            let source = answer.sources[index]
+            guard let document = documents[source.documentID] else { return nil }
+            let crop = source.box.flatMap { PageCrop.around($0, in: document.image) }
+            return Provenance(heading: "Where it says so", origin: origin(of: document), quote: source.quote,
+                              crop: crop?.image, highlight: crop?.highlight)
+        }
+    }
+
+    private func origin(of document: PageDocument) -> String {
+        "Read from \(document.reading.title) at \(document.readAt.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// Where a number came from: the words on the page it was read from, or what the card says.
+    private func source(of value: Double, in document: PageDocument?, fallback: String) -> String {
+        guard let document, let fact = document.reading.source(of: value) else { return fallback }
+        return "on \(document.reading.title): “\(fact.quote)”"
+    }
+
+    private func loanProvenance(_ loan: LoanTerms, pitchMonths: Int, document: PageDocument?, fallback: String, name: String) -> Provenance {
+        let apr = loan.apr.formatted(.percent.precision(.fractionLength(1)))
+        let inputs = [
+            Provenance.Input(label: "Amount borrowed", value: dollars(loan.principal, cents: true),
+                             source: source(of: loan.principal, in: document, fallback: fallback)),
+            Provenance.Input(label: "APR", value: apr, source: source(of: loan.apr * 100, in: document, fallback: fallback)),
+            Provenance.Input(label: "Months", value: "\(loan.termMonths)",
+                             source: loan.termMonths == pitchMonths
+                                 ? source(of: Double(loan.termMonths), in: document, fallback: fallback)
+                                 : "You twisted it from \(pitchMonths)"),
+        ]
+        let (heading, formula): (String, String) = switch name {
+        case "monthly":
+            ("Monthly payment: \(dollars(loan.monthlyPayment, cents: true))", "P × r ÷ (1 − (1 + r)^−n), r = APR ÷ 12")
+        case "interest":
+            ("Interest: \(dollars(loan.totalInterest))", "\(dollars(loan.totalPaid)) paid − \(dollars(loan.principal)) borrowed")
+        default:
+            ("Total paid: \(dollars(loan.totalPaid))", "\(dollars(loan.monthlyPayment, cents: true)) a month × \(loan.termMonths) months")
+        }
+        return Provenance(heading: heading, origin: "Worked out by Grasp, not by the AI", formula: formula, inputs: inputs)
+    }
+
+    private func recurringProvenance(_ cost: RecurringCost, document: PageDocument) -> Provenance {
+        var parts: [String] = []
+        var inputs: [Provenance.Input] = []
+        func add(_ label: String, _ value: Double, cents: Bool = true) {
+            inputs.append(Provenance.Input(label: label, value: dollars(value, cents: cents),
+                                           source: source(of: value, in: document, fallback: "the page")))
+        }
+        if let promo = cost.promoMonthly, cost.promoMonthsCounted > 0 {
+            parts.append("\(cost.promoMonthsCounted) × \(dollars(promo))")
+            add("Promo price", promo)
+        }
+        let regular = cost.months - cost.promoMonthsCounted
+        if regular > 0 { parts.append("\(regular) × \(dollars(cost.monthly))") }
+        add("Regular price", cost.monthly)
+        if cost.extraMonthly != 0 {
+            parts.append("\(cost.months) × \(dollars(cost.extraMonthly)) extras")
+            for extra in document.reading.model.extraMonthly ?? [] where document.reading.source(of: extra) != nil {
+                add(extra < 0 ? "Monthly discount" : "Other monthly charge", extra)
+            }
+        }
+        if cost.upfront > 0 {
+            parts.append("\(dollars(cost.upfront)) up front")
+            add("One-time charges", cost.upfront)
+        }
+        let written = document.reading.resolvedModel
+        if case .recurring(let original) = written, original.months != cost.months {
+            inputs.append(Provenance.Input(label: "Months", value: "\(cost.months)", source: "You twisted it from \(original.months)"))
+        }
+        return Provenance(
+            heading: "Total over \(cost.months) months: \(dollars(cost.total))",
+            origin: "Worked out by Grasp, not by the AI",
+            formula: parts.joined(separator: " + "),
+            inputs: inputs
+        )
     }
 }

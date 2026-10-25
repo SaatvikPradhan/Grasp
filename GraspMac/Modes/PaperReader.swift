@@ -13,6 +13,8 @@ final class PaperReader {
         case idle
         case reading
         case read(OfferReading, seconds: Double)
+        /// Any other page, read by the general reader.
+        case page(PageReading, seconds: Double)
         case failed(String)
     }
 
@@ -49,22 +51,53 @@ final class PaperReader {
         let started = Date()
 
         Task {
-            // Vision runs while Gemini reads, so the boxes are ready when the values are.
-            async let lines = captureID == nil ? [] : PageText.recognize(jpeg: jpeg)
-            do {
-                let reading = try await OfferReader(client: client).read(jpeg: jpeg)
+            // Three readers at once: the car-offer reader (fast, drives the loan cards), the
+            // general page reader (anything: facts, catches, model), and Vision (where the words are).
+            async let lines = PageText.recognize(jpeg: jpeg)
+            async let page = try? PageReader(client: client).read(jpeg: jpeg)
+            let offer = try? await OfferReader(client: client).read(jpeg: jpeg)
+
+            if let offer, offer.documentType != .other {
                 if latestCardID == cardID {
-                    state = .read(reading, seconds: Date().timeIntervalSince(started))
+                    state = .read(offer, seconds: Date().timeIntervalSince(started))
                 }
-                canvas.finishScan(cardID, with: reading)
+                canvas.finishScan(cardID, with: offer)
                 if let captureID {
-                    onHighlights?(captureID, PageText.highlights(for: reading, in: await lines))
+                    onHighlights?(captureID, PageText.highlights(for: offer, in: await lines))
                 }
-            } catch {
+            }
+
+            guard let page = await page else {
+                if offer == nil || offer?.documentType == .other {
+                    let message = "Couldn't read that page. Try again with the whole page in view."
+                    if latestCardID == cardID { state = .failed(message) }
+                    canvas.failScan(cardID, message: message)
+                }
+                return
+            }
+            let recognized = await lines
+            let sources = PageText.sources(for: page, in: recognized)
+            let document = PageDocument(
+                id: UUID(), image: image, reading: page,
+                factBoxes: sources.facts, catchBoxes: sources.catches,
+                text: recognized.map(\.string), lineBoxes: PageText.lineBoxes(recognized),
+                captureID: captureID, readAt: Date()
+            )
+            canvas.finishPage(cardID, document: document)
+
+            // Pages that aren't car offers get their catches (red) and facts (green) boxed on the phone.
+            if offer == nil || offer?.documentType == .other {
                 if latestCardID == cardID {
-                    state = .failed(error.localizedDescription)
+                    state = .page(page, seconds: Date().timeIntervalSince(started))
                 }
-                canvas.failScan(cardID, message: error.localizedDescription)
+                if let captureID {
+                    let boxes = page.catches.compactMap { item in
+                        sources.catches[item.title].map { LinkHighlight(text: item.title, rect: $0, kind: .addon) }
+                    } + page.facts.compactMap { fact in
+                        sources.facts[fact.key].map { LinkHighlight(text: fact.asPrinted, rect: $0, kind: .term) }
+                    }
+                    onHighlights?(captureID, boxes)
+                }
             }
         }
     }

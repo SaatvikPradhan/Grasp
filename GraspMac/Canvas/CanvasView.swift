@@ -9,12 +9,18 @@ struct CanvasView: View {
     let probes: ProbeHub
     let voice: VoiceController
     let money: MoneyMode
+    let asker: Asker
     /// Rendering to a PNG: leaves out the camera preview and drop target, which can't be drawn offscreen.
     var isSnapshot = false
+    @State private var popoverSize = CGSize(width: 400, height: 300)
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             GridBackground()
+
+            if model.cards.isEmpty {
+                EmptyCanvasHint()
+            }
 
             ForEach(model.cards) { card in
                 CardView(
@@ -64,7 +70,7 @@ struct CanvasView: View {
 
             VStack {
                 Spacer()
-                VoiceBar(voice: voice, money: money)
+                VoiceBar(voice: voice, money: money, asker: asker)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 20)
@@ -76,6 +82,14 @@ struct CanvasView: View {
                 .animation(.spring(duration: 0.3), value: model.isTrashVisible)
                 .allowsHitTesting(false)
 
+            if let hovered = model.hovered, let frame = model.hoverFrame(hovered),
+               let provenance = model.provenance(for: hovered) {
+                ProvenancePopover(provenance: provenance)
+                    .onGeometryChange(for: CGSize.self) { proxy in proxy.size } action: { popoverSize = $0 }
+                    .position(popoverPosition(beside: frame))
+                    .transition(.opacity)
+            }
+
             // Cursors last so they draw over everything; they never take clicks.
             ForEach(model.hands) { hand in
                 HandCursor(mode: model.cursorState(for: hand))
@@ -84,6 +98,9 @@ struct CanvasView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(.named(CanvasModel.space))
+        .environment(model)
+        .animation(.easeOut(duration: 0.15), value: model.hovered)
         .modifier(PhotoDropTarget(paper: paper, isEnabled: !isSnapshot))
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
@@ -93,6 +110,16 @@ struct CanvasView: View {
         .background(Theme.paper)
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
+    }
+
+    /// To the right of the hovered item if there's room, otherwise to its left; kept on screen.
+    private func popoverPosition(beside frame: CGRect) -> CGPoint {
+        let width = popoverSize.width, height = popoverSize.height
+        let size = model.canvasSize
+        let right = frame.maxX + 16 + width / 2
+        let x = right <= size.width ? right : frame.minX - 16 - width / 2
+        let y = min(max(frame.midY, height / 2 + 10), size.height - height / 2 - 10)
+        return CGPoint(x: min(max(x, width / 2 + 10), size.width - width / 2 - 10), y: y)
     }
 
     private var header: some View {
@@ -125,6 +152,29 @@ struct CanvasView: View {
             if model.hands.contains(where: \.isOpenPalm) { return "Swipe an open hand across a chart to switch bars and lines." }
             return "Pinch a chart to grab it. Make a fist to talk."
         }
+    }
+}
+
+/// What an empty canvas says: hand it anything.
+private struct EmptyCanvasHint: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "doc.text.viewfinder")
+                .font(.system(size: 54, weight: .light))
+                .foregroundStyle(Theme.muted)
+            Text("Hand Grasp anything with numbers on it")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(Theme.ink)
+            Text("A lease, a phone bill, a loan, a credit card offer, a paper.\nHold it up to the phone and tap, or drop a photo here.")
+                .font(.system(size: 16))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.muted)
+            Text("Then hover any number to see where it came from, or make a fist and ask anything.")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
     }
 }
 

@@ -19,14 +19,16 @@ final class VoiceController {
 
     @ObservationIgnored private let canvas: CanvasModel
     @ObservationIgnored private let money: MoneyMode
+    @ObservationIgnored private let asker: Asker
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
 
-    init(canvas: CanvasModel, money: MoneyMode) {
+    init(canvas: CanvasModel, money: MoneyMode, asker: Asker) {
         self.canvas = canvas
         self.money = money
+        self.asker = asker
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -139,6 +141,8 @@ final class VoiceController {
             return money.listenToPitch(on)
         case .summary:
             return await money.saveSummary()
+        case .ask(let question):
+            return await asker.ask(question)
         case .removeCard:
             return canvas.deleteFrontCard() ? "Threw away the card in front" : "There's nothing to throw away"
         case .clearCanvas:

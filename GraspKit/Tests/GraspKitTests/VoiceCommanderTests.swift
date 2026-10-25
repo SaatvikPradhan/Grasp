@@ -42,6 +42,16 @@ struct LiveVoiceTests {
         #expect(try await heard("start listening to the salesman") == .listenToPitch(true))
     }
 
+    @Test(.enabled(if: key != nil)) func questionsBecomeAsk() async throws {
+        guard case .ask(let question) = try await heard("can I cancel this early") else {
+            Issue.record("expected a question"); return
+        }
+        #expect(question.lowercased().contains("cancel"))
+        guard case .ask = try await heard("what happens after the first year") else {
+            Issue.record("expected a question"); return
+        }
+    }
+
     @Test(.enabled(if: key != nil)) func ignoresTheSalesperson() async throws {
         #expect(try await heard("we can get you in at just three eighty eight a month") == .none)
     }
