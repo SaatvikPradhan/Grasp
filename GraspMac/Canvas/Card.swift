@@ -65,6 +65,8 @@ struct PageDocument: Equatable, Identifiable {
     var readAt: Date
     /// The dial for its model: months to count.
     var months: Int?
+    /// Set when the "page" is a video: where it plays from, and when each line is said.
+    var video: VideoSource?
 
     var model: PageModel {
         switch reading.resolvedModel {
@@ -77,6 +79,35 @@ struct PageDocument: Equatable, Identifiable {
     /// Facts worth showing as chips: everything except what the model line already says.
     var shownFacts: [PageReading.Fact] { Array(reading.facts.prefix(8)) }
     var shownCatches: [PageReading.Catch] { Array(reading.allCatches.prefix(4)) }
+}
+
+/// A video read like a page: where it plays from and what was said when.
+struct VideoSource: Equatable {
+    enum Location: Equatable {
+        case file(URL)
+        case youTube(id: String)
+    }
+
+    var location: Location
+    var duration: Double?
+    var reading: VideoReading
+
+    /// The video in the browser at a moment, for YouTube.
+    func webURL(at seconds: Double) -> URL? {
+        guard case .youTube(let id) = location else { return nil }
+        return URL(string: "https://www.youtube.com/watch?v=\(id)&t=\(Int(seconds))s")
+    }
+
+    /// The YouTube id in a link: watch?v=, youtu.be/, shorts/ or embed/.
+    static func youTubeID(in link: String) -> String? {
+        guard let url = URL(string: link.trimmingCharacters(in: .whitespaces)), let host = url.host?.lowercased() else { return nil }
+        if host.hasSuffix("youtu.be") { return url.pathComponents.dropFirst().first }
+        guard host.hasSuffix("youtube.com") else { return nil }
+        if let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "v" })?.value { return id }
+        let parts = url.pathComponents
+        if let at = parts.firstIndex(where: { $0 == "shorts" || $0 == "embed" || $0 == "live" }), at + 1 < parts.count { return parts[at + 1] }
+        return nil
+    }
 }
 
 /// A question and Grasp's answer, with the words on the pages that back it.
@@ -144,6 +175,30 @@ struct LetterCard: Equatable {
     var letter: DisputeLetter
 }
 
+/// A deep dive into one thing on a page: what web sources say about it.
+struct DeepDiveCard: Equatable {
+    /// The page it came from, so it folds away with that page.
+    var documentID: UUID?
+    var subject: DeepDiveSubject
+    /// Nil while searching.
+    var dive: DeepDive?
+    var failure: String?
+}
+
+/// Notes typed right on the canvas beside a page, one per line, ready to check against it.
+struct NotePadCard: Equatable {
+    /// The page they're about, if one was in focus.
+    var documentID: UUID?
+    var title: String
+    var text: String
+    /// Being checked against the page.
+    var isChecking = false
+
+    var lines: [String] {
+        text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+}
+
 /// A protocol to follow step by step; the live run is in `ProtocolGuide`.
 struct GuideCard: Equatable {
     var documentID: UUID
@@ -183,6 +238,8 @@ struct Scan: Equatable {
     var status: Status
     /// The page as the general reader read it, once it has, for questions and hovers.
     var documentID: UUID?
+    /// What it says while reading: "Reading the paper…", "Watching the video…".
+    var readingLabel: String?
 }
 
 /// The value a twist turns.
@@ -232,6 +289,10 @@ struct Card: Identifiable, Equatable {
         case related(RelatedCard)
         /// A dispute letter, ready to send.
         case letter(LetterCard)
+        /// What the web says about one thing on a page.
+        case deepDive(DeepDiveCard)
+        /// Notes typed on the canvas.
+        case notePad(NotePadCard)
     }
 
     /// Swipe flips a card between its two ways of drawing the same numbers (bars and lines).
@@ -274,7 +335,12 @@ struct Card: Identifiable, Equatable {
         case .scan(let scan): CGSize(width: 300, height: Self.photoHeight(scan.image) + Self.scanFooter(scan.status))
         case .advice(let advice): CGSize(width: 500, height: 96 + Double(advice.lines.count) * 58)
         case .pitch(let checks): CGSize(width: 460, height: 70 + Double(min(checks.count, 3)) * 74)
-        case .document(let document): CGSize(width: Self.documentWidth, height: Self.documentHeight(document))
+        case .document(let document):
+            if let video = document.video {
+                CGSize(width: Self.documentWidth, height: Self.videoHeight(video))
+            } else {
+                CGSize(width: Self.documentWidth, height: Self.documentHeight(document))
+            }
         case .answer(let answer): CGSize(width: Self.answerWidth, height: Self.answerHeight(answer))
         case .notes(let notes): CGSize(width: Self.notesWidth, height: Self.notesHeight(notes))
         case .notebook(let notebook): CGSize(width: Self.notebookWidth, height: Self.notebookHeight(notebook))
@@ -283,6 +349,8 @@ struct Card: Identifiable, Equatable {
         case .method(let method): CGSize(width: 600, height: Self.methodHeight(method.map))
         case .related(let related): CGSize(width: 600, height: Self.relatedHeight(related.result))
         case .letter(let letter): CGSize(width: 500, height: Self.letterHeight(letter.letter))
+        case .deepDive(let card): CGSize(width: Self.deepDiveWidth, height: Self.deepDiveHeight(card))
+        case .notePad(let pad): CGSize(width: 440, height: min(max(230, 150 + 21 * Double(pad.text.components(separatedBy: .newlines).count)), 520))
         }
     }
 
@@ -315,7 +383,7 @@ struct Card: Identifiable, Equatable {
             // k in thousandths: 0.019 per minute is 19.
             Dial(value: Int((card.k * 1000).rounded()), range: 1...100, step: 1, unit: "",
                  display: String(format: "k %.3f per %@", card.k, card.model.timeUnit))
-        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter, .deepDive, .notePad:
             nil
         }
     }
@@ -340,7 +408,7 @@ struct Card: Identifiable, Equatable {
         case .model(var card):
             card.twistedK = Double(value) / 1000
             kind = .model(card)
-        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter:
+        case .temperatures, .scan, .advice, .pitch, .answer, .notes, .notebook, .guide, .method, .related, .letter, .deepDive, .notePad:
             return false
         }
         return true
@@ -377,6 +445,17 @@ struct Card: Identifiable, Equatable {
         return 300 + papers + directions
     }
 
+    static let deepDiveWidth = 520.0
+
+    static func deepDiveHeight(_ card: DeepDiveCard) -> Double {
+        guard let dive = card.dive else { return 210 }
+        // About 66 characters to a line of finding text.
+        let findings = dive.findings.map { 10 + 18 * ceil(Double($0.text.count) / 66) }.reduce(0, +)
+        let bottomLine = dive.bottomLine.map { 34 + 19 * ceil(Double($0.count) / 58) } ?? 0
+        let sources = dive.sources.isEmpty ? 0 : 30 + 21 * ceil(Double(min(dive.sources.count, 6)) / 2)
+        return 150 + findings + bottomLine + sources
+    }
+
     static func letterHeight(_ letter: DisputeLetter) -> Double {
         let items = 44 * Double(letter.items.count)
         let questions = letter.questions.isEmpty ? 0 : 26 + 22 * Double(letter.questions.count)
@@ -406,6 +485,12 @@ struct Card: Identifiable, Equatable {
     }
 
     // MARK: Document layout
+
+    static func videoHeight(_ video: VideoSource) -> Double {
+        let moments = 27 * Double(min(video.reading.moments.count, 6))
+        let facts = video.reading.facts.isEmpty ? 0 : 26 + 25 * Double(min(video.reading.facts.count, 5))
+        return 120 + 252 + 26 + moments + facts + 30
+    }
 
     static func documentHeight(_ document: PageDocument) -> Double {
         var height = 40.0 + 64       // padding, header and summary
@@ -450,7 +535,7 @@ extension Card.Kind {
     /// Cards that sit beside the page in focus: one at a time, the rest as chips in its group.
     var sitsBeside: Bool {
         switch self {
-        case .answer, .notes, .model, .notebook, .guide, .method, .related, .letter: true
+        case .answer, .notes, .model, .notebook, .guide, .method, .related, .letter, .deepDive, .notePad: true
         default: false
         }
     }

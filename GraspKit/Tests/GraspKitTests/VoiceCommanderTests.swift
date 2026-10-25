@@ -14,6 +14,10 @@ struct VoiceCommandMappingTests {
         #expect(VoiceCommander.command(from: FunctionCall(name: "remove_card")) == .removeCard)
         #expect(VoiceCommander.command(from: FunctionCall(name: "not_a_command")) == .none)
         #expect(VoiceCommander.command(from: FunctionCall(name: "set_term")) == .none)   // missing argument
+        #expect(VoiceCommander.command(from: FunctionCall(name: "deep_dive")) == .deepDive)
+        #expect(VoiceCommander.command(from: FunctionCall(name: "put_away")) == .putAway)
+        #expect(VoiceCommander.command(from: FunctionCall(name: "take_note", arguments: ["text": .text("ask about the fee")])) == .takeNote("ask about the fee"))
+        #expect(VoiceCommander.command(from: FunctionCall(name: "take_note")) == .none)
     }
 }
 
@@ -50,6 +54,17 @@ struct LiveVoiceTests {
         guard case .ask = try await heard("what happens after the first year") else {
             Issue.record("expected a question"); return
         }
+    }
+
+    @Test(.enabled(if: key != nil)) func understandsNotesDivesAndPuttingAway() async throws {
+        #expect(try await heard("look this up online") == .deepDive)
+        #expect(try await heard("what do other sources say about this") == .deepDive)
+        #expect(try await heard("put it away") == .putAway)
+        guard case .takeNote(let note) = try await heard("take a note ask them about the late fee") else {
+            Issue.record("expected a note"); return
+        }
+        #expect(note.lowercased().contains("late fee"))
+        #expect(!note.lowercased().contains("take a note"))
     }
 
     @Test(.enabled(if: key != nil)) func ignoresTheSalesperson() async throws {

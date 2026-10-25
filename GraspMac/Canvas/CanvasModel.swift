@@ -55,6 +55,18 @@ final class CanvasModel {
 
     private var grips: [Int: Grip] = [:]
     private var mouseGrip: (id: UUID, startCenter: CGPoint)?
+    /// Two hands pinching close together: where they started, how far apart, and whether the
+    /// zoom has already gone off (once per pair of pinches).
+    @ObservationIgnored private var zoom: (hands: Set<Int>, gap: CGFloat, at: CGPoint, fired: Bool)?
+    /// Called with the point two hands zoomed into, to dive into whatever is there.
+    @ObservationIgnored var onZoom: ((CGPoint) -> Void)?
+    /// Called to check a note pad's lines against its page.
+    @ObservationIgnored var onCheckNotePad: ((UUID) -> Void)?
+    /// Called with each result worth keeping (an answer, checked notes, a deep dive, a notebook)
+    /// and the page it's about, for saving to Tiger Data.
+    @ObservationIgnored var onResult: ((Card.Kind, UUID?) -> Void)?
+    /// A note pad is being typed in: Space and Delete type instead of talking and deleting cards.
+    var isTyping = false
 
     /// The canvas starts empty: hand Grasp anything. ⌘R lays out the demo cards.
     init() {}
@@ -114,9 +126,14 @@ final class CanvasModel {
             if let swipe = hand.swipe {
                 toggleStyle(at: point(fromCanvasUnits: swipe.origin))
             }
+            if hand.thumbsUp {
+                let p = point(for: hand)
+                putAway(cards.last { !$0.isFolded && $0.frame.contains(p) }?.id)
+            }
             track(hand)
         }
         hands = newHands
+        updateZoom()
         updateMerges()
         updateTrash()
         updateHandHover()
@@ -132,7 +149,9 @@ final class CanvasModel {
         if grips[hand.id] == nil {
             // A pinch grabs the top card under it, or nothing; it never picks one up later.
             // Grabbing puts it in focus, and a chip opens up under the hand.
-            if let found = cards.last(where: { $0.frame.contains(p) }) {
+            // A second hand pinching the card the first is holding doesn't grab it: two hands on one
+            // thing are about to zoom into it.
+            if let found = cards.last(where: { $0.frame.contains(p) }), !grips.values.contains(where: { $0.cardID == found.id }) {
                 focus(found.id, openingAt: p)
                 guard let card = cards.last else { return }
                 grips[hand.id] = Grip(
@@ -161,6 +180,157 @@ final class CanvasModel {
             }
         } else {
             cards[index].center = clamped(CGPoint(x: p.x + grip.offset.width, y: p.y + grip.offset.height))
+        }
+    }
+
+    // MARK: Zoom
+
+    /// Two hands pinch close together over something, then pull apart: dive into it. Whatever
+    /// a hand grabbed on the way snaps back, since this was a zoom, not a drag.
+    private func updateZoom() {
+        let pinching = hands.filter(\.isPinching)
+        guard pinching.count == 2 else {
+            zoom = nil
+            return
+        }
+        let a = point(for: pinching[0]), b = point(for: pinching[1])
+        let gap = hypot(a.x - b.x, a.y - b.y)
+        let ids = Set(pinching.map(\.id))
+        guard let started = zoom, started.hands == ids else {
+            // Only pinches that start close together zoom; far apart, they're pushing two cards together.
+            zoom = (ids, gap, CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), gap > Self.zoomStartGap)
+            return
+        }
+        guard !started.fired, gap > max(started.gap * 1.8, started.gap + Self.zoomSpread) else { return }
+        zoom?.fired = true
+        withAnimation(.spring(duration: 0.3)) {
+            for (hand, grip) in grips where ids.contains(hand) {
+                if let id = grip.cardID, let index = index(of: id) { cards[index].center = grip.startCenter }
+                grips[hand] = Grip()
+            }
+        }
+        onZoom?(started.at)
+    }
+
+    /// Pinches closer than this (points) can start a zoom…
+    static let zoomStartGap: CGFloat = 260
+    /// …which goes off once they've pulled at least this much further apart.
+    static let zoomSpread: CGFloat = 220
+
+    // MARK: Deep dive
+
+    /// What a deep dive at `point` is about: the thing hovered there (a number, a catch, an
+    /// answer's source, a line a card cites), else the card there; without a point, what's hovered
+    /// or the card in focus. Also the page it's from, so the dive sits with that page.
+    func deepDiveSubject(at point: CGPoint?) -> (subject: DeepDiveSubject, documentID: UUID?)? {
+        let target: HoverTarget? = if let point {
+            hoverFrames.filter { $0.value.contains(point) }.min { $0.value.width * $0.value.height < $1.value.width * $1.value.height }?.key
+        } else {
+            hovered
+        }
+        if let target, let provenance = provenance(for: target) {
+            let documentID = documentID(behind: target)
+            let page = documentID.flatMap { documents[$0] }
+            return (DeepDiveSubject(topic: provenance.heading, quote: provenance.quote,
+                                    source: page.map { "\($0.reading.title) (\($0.reading.kind))" },
+                                    context: provenance.formula ?? page?.reading.summary), documentID)
+        }
+        let card = point.flatMap { p in cards.last { !$0.isFolded && $0.frame.contains(p) } } ?? focusedID.flatMap(self.card)
+        guard let card, let subject = subject(of: card) else { return nil }
+        return (subject, pageDocument(of: card)?.id)
+    }
+
+    /// The page a hovered thing is on.
+    private func documentID(behind target: HoverTarget) -> UUID? {
+        switch target {
+        case .fact(let documentID, _), .catchItem(let documentID, _), .moment(let documentID, _):
+            return documentID
+        case .answerSource(let cardID, let index):
+            guard case .answer(let answer)? = card(cardID)?.kind else { return nil }
+            return answer.sources[safe: index]?.documentID
+        case .cited(let cardID, let index):
+            return card(cardID).flatMap { citations(for: $0)[safe: index]?.documentID }
+        case .derived(let cardID, _), .passage(let cardID, _), .labStep(let cardID, _), .work(let cardID, _), .webFinding(let cardID, _):
+            return card(cardID).flatMap(pageDocument(of:))?.id
+        }
+    }
+
+    /// The page behind a card: its own, or the page it sits beside.
+    private func pageDocument(of card: Card) -> PageDocument? {
+        document(for: card) ?? owner(of: card).flatMap(self.card).flatMap(document(for:))
+    }
+
+    /// A whole card as something to dive into.
+    private func subject(of card: Card) -> DeepDiveSubject? {
+        switch card.kind {
+        case .document(let document):
+            return DeepDiveSubject(topic: document.reading.title, source: document.reading.kind, context: document.reading.summary)
+        case .loan(let loan):
+            let terms = loan.loan
+            return DeepDiveSubject(topic: "A \(dollars(terms.principal)) car loan at \(terms.apr.formatted(.percent.precision(.fractionLength(1)))) for \(terms.termMonths) months",
+                                   source: loan.title, context: "Is this a good deal, and what should the buyer ask for?")
+        case .comparison(let comparison):
+            return DeepDiveSubject(topic: "Dealer financing against a credit union pre-approval",
+                                   context: "\(comparison.dealer.loan.apr.formatted(.percent.precision(.fractionLength(1)))) from the dealer against "
+                                       + "\(comparison.other.loan.apr.formatted(.percent.precision(.fractionLength(1)))) from the credit union, over \(comparison.termMonths) months")
+        case .scan(let scan):
+            guard case .read(let reading) = scan.status, !reading.addOns.isEmpty else { return nil }
+            return DeepDiveSubject(topic: "Dealer add-ons: " + reading.addOns.map { "\($0.name) \(dollars($0.amount))" }.joined(separator: ", "),
+                                   source: "a car's window sticker", context: "Are these worth it, and can the buyer refuse them?")
+        case .answer(let answer):
+            return DeepDiveSubject(topic: answer.question, context: answer.answer.answer)
+        case .model(let model):
+            return DeepDiveSubject(topic: "\(model.paperTitle): \(model.condition.name), k = \(model.condition.k.value) per \(model.model.timeUnit)",
+                                   source: model.paperTitle, context: "Newton's law of cooling; what other measurements found")
+        case .notes(let notes):
+            return DeepDiveSubject(topic: notes.paperTitle, context: "Research on this paper's question")
+        case .method(let method):
+            return DeepDiveSubject(topic: "How studies like \(method.paperTitle) are done", context: "Methods and controls")
+        case .related(let related):
+            return DeepDiveSubject(topic: related.paperTitle, context: "Recent work on the same question")
+        case .letter(let letter):
+            return DeepDiveSubject(topic: "Disputing charges on a bill from \(letter.letter.company)",
+                                   context: letter.letter.items.map { "\($0.title) \(dollars($0.amount, cents: true))" }.joined(separator: "; "))
+        case .guide(let guide):
+            return DeepDiveSubject(topic: guide.lab.title, context: "How this experiment is usually run and what can go wrong")
+        case .notebook(let notebook):
+            return DeepDiveSubject(topic: notebook.notebook.title, context: notebook.notebook.summary)
+        case .temperatures:
+            return DeepDiveSubject(topic: "How fast a cup of hot water cools, with and without a lid")
+        case .advice, .pitch:
+            return DeepDiveSubject(topic: "Negotiating car financing at a dealership")
+        case .notePad(let pad):
+            return DeepDiveSubject(topic: pad.title, context: pad.lines.joined(separator: "; "))
+        case .deepDive:
+            return nil
+        }
+    }
+
+    /// Shows a deep dive beside its page (bringing the page back if it was put away) and returns its card.
+    @discardableResult
+    func showDeepDive(_ dive: DeepDiveCard) -> UUID {
+        if let documentID = dive.documentID, let page = cards.first(where: { document(for: $0)?.id == documentID }),
+           page.id != pageInFocus || page.isFolded {
+            focus(page.id)
+        }
+        var added = Card(center: .zero, kind: .deepDive(dive))
+        added.center = freeSpot(for: added.size)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            cards.append(added)
+            dock(added.id)
+        }
+        focusedID = added.id
+        return added.id
+    }
+
+    /// Fills in a deep dive once the search is back.
+    func updateDeepDive(_ id: UUID, _ change: (inout DeepDiveCard) -> Void) {
+        guard let index = index(of: id), case .deepDive(var dive) = cards[index].kind else { return }
+        change(&dive)
+        if dive.dive != nil { onResult?(.deepDive(dive), dive.documentID) }
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            cards[index].kind = .deepDive(dive)
+            if !cards[index].isFolded, pageInFocus != nil { dock(id) }
         }
     }
 
@@ -359,6 +529,30 @@ final class CanvasModel {
         }
     }
 
+    /// Thumbs up: puts a card away into its group down the left edge. A page goes with
+    /// everything open beside it; anything else goes on its own. Nil puts away the card in focus.
+    @discardableResult
+    func putAway(_ id: UUID? = nil) -> Bool {
+        guard let id = id ?? focusedID, let card = card(id), !card.isFolded, folds(card) else { return false }
+        let group = group(of: card)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            if isHead(card) {
+                for other in cards where !other.isFolded && folds(other) && self.group(of: other) == group {
+                    fold(other.id)
+                }
+            } else {
+                fold(id)
+            }
+            if !cards.contains(where: { !$0.isFolded && folds($0) && self.group(of: $0) == group }) {
+                groupInFocus = nil
+            }
+            if pageInFocus.flatMap(self.card)?.isFolded != false { pageInFocus = nil }
+            if focusedID.flatMap(self.card)?.isFolded != false { focusedID = nil }
+            layoutChips()
+        }
+        return true
+    }
+
     /// Page cards, oldest first.
     private var pagesByAge: [Card] {
         let pages: [(card: Card, readAt: Date)] = cards.compactMap { card in
@@ -396,6 +590,8 @@ final class CanvasModel {
         case .related(let related): related.paperID
         case .letter(let letter): letter.documentID
         case .guide(let guide): guide.documentID
+        case .deepDive(let dive): dive.documentID
+        case .notePad(let pad): pad.documentID
         default: nil
         }
         return documentID.flatMap { id in cards.first { document(for: $0)?.id == id }?.id }
@@ -549,8 +745,9 @@ final class CanvasModel {
 
     /// A photo lands on the canvas, flying in from the phone panel, while it is read.
     @discardableResult
-    func addScan(_ image: NSImage) -> UUID {
-        var card = Card(center: CGPoint(x: canvasSize.width - 160, y: 140), kind: .scan(Scan(image: image, status: .reading)))
+    func addScan(_ image: NSImage, label: String? = nil) -> UUID {
+        var card = Card(center: CGPoint(x: canvasSize.width - 160, y: 140),
+                        kind: .scan(Scan(image: image, status: .reading, readingLabel: label)))
         card.isArriving = true
         let target = freeSpot(for: card.size)
         let id = card.id
@@ -831,6 +1028,10 @@ final class CanvasModel {
                 "Lab notebook: \(notebook.notebook.title)"
             case .guide(let guide):
                 "The protocol \(guide.lab.title), \(guide.lab.steps.count) steps, ready to guide"
+            case .notePad(let pad):
+                "\(pad.title): " + pad.lines.joined(separator: "; ")
+            case .deepDive(let dive):
+                "A deep dive on \(dive.subject.topic): " + (dive.dive?.findings.map(\.text).joined(separator: " ") ?? "searching the web")
             case .letter(let letter):
                 "A dispute letter to \(letter.letter.company) asking for \(dollars(letter.letter.total, cents: true)): "
                     + letter.letter.items.map { "\($0.title) \(dollars($0.amount, cents: true))" }.joined(separator: "; ")
@@ -1032,6 +1233,23 @@ extension CanvasModel {
         }
     }
 
+    /// A video has been watched: its scan becomes the video's card.
+    func finishVideo(_ cardID: UUID, document: PageDocument) {
+        documents[document.id] = document
+        guard let index = index(of: cardID) else { return }
+        withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
+            cards[index].kind = .document(document)
+        }
+        focus(cardID)
+        settle(cardID)
+    }
+
+    /// When a video says these words, and the frame then, if the page is a video and they're in it.
+    private func videoMoment(of quote: String, in document: PageDocument) -> (seconds: Double, frame: NSImage?)? {
+        guard let video = document.video, let seconds = video.reading.seconds(of: quote) else { return nil }
+        return (seconds, VideoPlayers.shared.frame(of: document, at: seconds))
+    }
+
     /// The phone capture a hovered fact or catch is on, and a box around it, for the phone to show.
     func phoneSpot(for target: HoverTarget) -> (captureID: UUID, box: LinkHighlight)? {
         switch target {
@@ -1048,7 +1266,7 @@ extension CanvasModel {
             let source = answer.sources[index]
             guard let capture = documents[source.documentID]?.captureID, let rect = source.box else { return nil }
             return (capture, LinkHighlight(text: source.quote, rect: rect, kind: .term))
-        case .labStep, .work:
+        case .labStep, .work, .webFinding, .moment:
             return nil
         case .cited(let cardID, let index):
             guard let card = card(cardID), let citation = citations(for: card)[safe: index],
@@ -1067,6 +1285,7 @@ extension CanvasModel {
     /// Shows linked notes beside their paper. Notes read from a page take that page's card;
     /// typed notes replace the paper's last notes card.
     func showNotes(_ notes: NotesCard, replacing cardID: UUID? = nil) {
+        onResult?(.notes(notes), notes.paperID)
         withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
             if let cardID, let index = index(of: cardID) {
                 cards[index].isFolded = false
@@ -1234,6 +1453,7 @@ extension CanvasModel {
 
     /// Shows a written-up lab session, replacing the last one.
     func showNotebook(_ notebook: NotebookCard) {
+        onResult?(.notebook(notebook), nil)
         // The notebook is what's worth reading now: the guide and the other side cards fold away.
         withAnimation(.spring(duration: 0.45)) {
             for card in cards where card.kind.sitsBeside && !card.isFolded {
@@ -1243,6 +1463,64 @@ extension CanvasModel {
         }
         show(.notebook(notebook)) { if case .notebook = $0 { true } else { false } }
         if let id = cards.first(where: { if case .notebook = $0.kind { true } else { false } })?.id { focus(id) }
+    }
+
+    // MARK: Note pads
+
+    /// Opens a note pad beside the page in focus (that page's own, if it has one), adding `line`
+    /// if given, and returns it.
+    @discardableResult
+    func showNotePad(adding line: String? = nil) -> UUID {
+        let document = pageInFocus.flatMap(card).flatMap(document(for:))
+        // Under a playing video, a spoken note gets the time too.
+        var line = line
+        if let said = line, let document, document.video != nil,
+           let seconds = VideoPlayers.shared.currentTime(of: document), seconds > 0.5 {
+            line = "[\(VideoReading.clock(seconds))] " + said
+        }
+        if let existing = cards.last(where: { if case .notePad(let pad) = $0.kind { pad.documentID == document?.id } else { false } }) {
+            if let line {
+                updateNotePad(existing.id) { $0.text += ($0.text.isEmpty || $0.text.hasSuffix("\n") ? "" : "\n") + line }
+            }
+            withAnimation(.spring(duration: 0.45, bounce: 0.2)) { dock(existing.id) }
+            focusedID = existing.id
+            return existing.id
+        }
+        let title = document.map { "Notes on \($0.reading.title)" } ?? "Notes"
+        var added = Card(center: .zero, kind: .notePad(NotePadCard(documentID: document?.id, title: title, text: line ?? "")))
+        added.center = freeSpot(for: added.size)
+        withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
+            cards.append(added)
+            dock(added.id)
+        }
+        focusedID = added.id
+        return added.id
+    }
+
+    func updateNotePad(_ id: UUID, _ change: (inout NotePadCard) -> Void) {
+        guard let index = index(of: id), case .notePad(var pad) = cards[index].kind else { return }
+        change(&pad)
+        cards[index].kind = .notePad(pad)
+    }
+
+    /// Checked notes back to a pad, to change them and check again.
+    func editNotes(_ id: UUID) {
+        guard let index = index(of: id), case .notes(let notes) = cards[index].kind else { return }
+        let title = documents[notes.paperID].map { "Notes on \($0.reading.title)" } ?? "Notes"
+        withAnimation(.spring(duration: 0.4)) {
+            cards[index].kind = .notePad(NotePadCard(documentID: notes.paperID, title: title,
+                                                    text: notes.linked.notes.map(\.note).joined(separator: "\n")))
+            if pageInFocus != nil { dock(id) }
+        }
+    }
+
+    /// Note pads on the canvas, as pages Ask can answer from.
+    var notePadPages: [AskedDocument] {
+        cards.compactMap { card in
+            guard case .notePad(let pad) = card.kind, !pad.lines.isEmpty else { return nil }
+            return AskedDocument(title: pad.title, kind: "the user's own notes", summary: "Notes the user typed",
+                                 facts: [], catches: [], text: pad.lines.joined(separator: "\n"))
+        }
     }
 
     /// Lab notebooks on the canvas, as pages Ask can answer from.
@@ -1284,6 +1562,7 @@ extension CanvasModel {
     func showAnswer(_ answer: AnswerCard) {
         var answer = answer
         answer.pageID = pageInFocus.flatMap { self.card($0)?.id }
+        onResult?(.answer(answer), pageInFocus.flatMap(self.card).flatMap(document(for:))?.id)
         var added = Card(center: .zero, kind: .answer(answer))
         added.center = freeSpot(for: added.size)
         withAnimation(.spring(duration: 0.45, bounce: 0.2)) {
@@ -1372,6 +1651,14 @@ extension CanvasModel {
 
     func provenance(for target: HoverTarget) -> Provenance? {
         switch target {
+        case .webFinding(let cardID, let index):
+            guard case .deepDive(let card)? = card(cardID)?.kind, let dive = card.dive, let finding = dive.findings[safe: index] else { return nil }
+            let sites = finding.sources.compactMap { number in dive.sources[safe: number].map { "[\(number + 1)] \($0.site)" } }
+            return Provenance(
+                heading: "What the web says about \(card.subject.topic)",
+                origin: sites.isEmpty ? "Gemini with Google Search; no page backs this line" : "Gemini with Google Search · click to open the first source",
+                quote: finding.text,
+                formula: sites.isEmpty ? nil : sites.joined(separator: "  "))
         case .work(let cardID, let index):
             guard case .related(let related)? = card(cardID)?.kind, let work = related.result.works[safe: index] else { return nil }
             let why = related.result.related.first { $0.work.id == work.id }?.why
@@ -1398,16 +1685,33 @@ extension CanvasModel {
         case .passage(let cardID, let index):
             guard case .notes(let card)? = card(cardID)?.kind, let (document, passage) = passage(cardID, index) else { return nil }
             let crop = box(for: passage.location, in: document).flatMap { PageCrop.around($0, in: document.image) }
+            var image = crop?.image, highlight = crop?.highlight, origin = origin(of: document)
+            // In a video, the frame when it's said.
+            if let video = document.video, let line = video.reading.transcript[safe: passage.location.line] {
+                image = VideoPlayers.shared.frame(of: document, at: line.seconds)
+                highlight = nil
+                origin = "Said at \(VideoReading.clock(line.seconds)) in \(document.reading.title)"
+            }
             if card.linked.notes.indices.contains(index) {
                 let note = card.linked.notes[index]
-                return Provenance(heading: "Your note: “\(note.note)”", origin: origin(of: document), quote: passage.quote,
-                                  formula: note.paperSays.map { "The paper says: \($0)" }, crop: crop?.image, highlight: crop?.highlight)
+                return Provenance(heading: "Your note: “\(note.note)”", origin: origin, quote: passage.quote,
+                                  formula: note.paperSays.map { "It says: \($0)" }, crop: image, highlight: highlight)
             }
             let direction = card.linked.directions[index - card.linked.notes.count]
-            return Provenance(heading: direction.title, origin: origin(of: document), quote: passage.quote,
-                              formula: direction.why, crop: crop?.image, highlight: crop?.highlight)
+            return Provenance(heading: direction.title, origin: origin, quote: passage.quote,
+                              formula: direction.why, crop: image, highlight: highlight)
+        case .moment(let documentID, let index):
+            guard let document = documents[documentID], let video = document.video, let moment = video.reading.moments[safe: index] else { return nil }
+            let said = video.reading.transcript.last { $0.seconds <= moment.seconds + 1 }?.text
+            return Provenance(heading: moment.title, origin: "At \(VideoReading.clock(moment.seconds)) in \(document.reading.title) · click to play from here",
+                              quote: said, formula: moment.why, crop: VideoPlayers.shared.frame(of: document, at: moment.seconds))
         case .fact(let documentID, let key):
             guard let document = documents[documentID], let fact = document.reading.fact(key) else { return nil }
+            if let said = videoMoment(of: fact.quote, in: document) {
+                return Provenance(heading: "\(fact.label): \(fact.asPrinted)",
+                                  origin: "Said at \(VideoReading.clock(said.seconds)) in \(document.reading.title) · click to play it",
+                                  quote: fact.quote, crop: said.frame)
+            }
             let crop = document.factBoxes[key].flatMap { PageCrop.around($0, in: document.image) }
             return Provenance(heading: "\(fact.label): \(fact.asPrinted)", origin: origin(of: document),
                               quote: fact.quote, crop: crop?.image, highlight: crop?.highlight)
@@ -1456,6 +1760,10 @@ extension CanvasModel {
             guard case .answer(let answer)? = card(cardID)?.kind, answer.sources.indices.contains(index) else { return nil }
             let source = answer.sources[index]
             guard let document = documents[source.documentID] else { return nil }
+            if let said = videoMoment(of: source.quote, in: document) {
+                return Provenance(heading: "Where it's said", origin: "At \(VideoReading.clock(said.seconds)) in \(document.reading.title)",
+                                  quote: source.quote, crop: said.frame)
+            }
             let crop = source.box.flatMap { PageCrop.around($0, in: document.image) }
             return Provenance(heading: "Where it says so", origin: origin(of: document), quote: source.quote,
                               crop: crop?.image, highlight: crop?.highlight)

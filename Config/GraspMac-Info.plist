@@ -6,6 +6,8 @@
 	<string>$(GEMINI_API_KEY)</string>
 	<key>ELEVENLABS_API_KEY</key>
 	<string>$(ELEVENLABS_API_KEY)</string>
+	<key>TIGER_SERVICE</key>
+	<string>$(TIGER_SERVICE)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Grasp receives what your iPhone camera sees.</string>
 	<key>NSBonjourServices</key>

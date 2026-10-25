@@ -13,6 +13,10 @@ struct CanvasView: View {
     let lab: LabSession
     let guide: ProtocolGuide
     /// Rendering to a PNG: leaves out the camera preview and drop target, which can't be drawn offscreen.
+    /// Where sessions are kept, for its status under the title; nil in snapshots.
+    var tiger: TigerStore?
+    /// Reads videos dropped on the canvas.
+    var videos: VideoStudy?
     var isSnapshot = false
     @State private var popoverSize = CGSize(width: 400, height: 300)
 
@@ -113,8 +117,9 @@ struct CanvasView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .coordinateSpace(.named(CanvasModel.space))
         .environment(model)
+        .environment(\.isCanvasSnapshot, isSnapshot)
         .animation(.easeOut(duration: 0.15), value: model.hovered)
-        .modifier(PhotoDropTarget(paper: paper, isEnabled: !isSnapshot))
+        .modifier(PhotoDropTarget(paper: paper, videos: videos, isEnabled: !isSnapshot))
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
@@ -144,8 +149,23 @@ struct CanvasView: View {
             Text(statusLine)
                 .font(.system(size: 14))
                 .foregroundStyle(pipeline.status == .running ? Theme.muted : Theme.warn)
+            if let tiger, let line = storageLine(tiger.status) {
+                Label(line.text, systemImage: "cylinder.split.1x2")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(line.isProblem ? Theme.warn : Theme.muted)
+                    .lineLimit(1)
+            }
         }
         .allowsHitTesting(false)
+    }
+
+    private func storageLine(_ status: TigerStore.Status) -> (text: String, isProblem: Bool)? {
+        switch status {
+        case .off: nil
+        case .connecting: ("Connecting to Tiger Data…", false)
+        case .saving(let rows): ("Tiger Data · \(rows) row\(rows == 1 ? "" : "s") saved", false)
+        case .failed(let message): ("Tiger Data: \(message)", true)
+        }
     }
 
     private var statusLine: String {
@@ -194,13 +214,18 @@ private struct EmptyCanvasHint: View {
 /// Drop a photo of a contract on the canvas to read it without the phone.
 private struct PhotoDropTarget: ViewModifier {
     let paper: PaperReader
+    let videos: VideoStudy?
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
         if isEnabled {
             content.dropDestination(for: URL.self) { urls, _ in
                 guard let url = urls.first else { return false }
-                paper.read(fileAt: url)
+                if let videos {
+                    GraspMacApp.read(url, paper: paper, videos: videos)
+                } else {
+                    paper.read(fileAt: url)
+                }
                 return true
             }
         } else {

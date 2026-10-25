@@ -16,6 +16,9 @@ struct GraspMacApp: App {
     @State private var lab: LabSession
     @State private var guide: ProtocolGuide
     @State private var disputer: Disputer
+    @State private var diver: DeepDiver
+    @State private var tiger: TigerStore
+    @State private var videos: VideoStudy
 
     init() {
         let canvas = CanvasModel()
@@ -31,27 +34,36 @@ struct GraspMacApp: App {
         _guide = State(initialValue: guide)
         let disputer = Disputer(canvas: canvas)
         _disputer = State(initialValue: disputer)
+        let diver = DeepDiver(canvas: canvas, voiceOut: money.voiceOut)
+        _diver = State(initialValue: diver)
         _hands = State(initialValue: hands)
         _phone = State(initialValue: phone)
         _probes = State(initialValue: probes)
+        _tiger = State(initialValue: TigerStore(probes: probes))
+        _videos = State(initialValue: VideoStudy(canvas: canvas))
         _asker = State(initialValue: asker)
         _researcher = State(initialValue: researcher)
         _lab = State(initialValue: lab)
-        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab, guide: guide, disputer: disputer))
+        _voice = State(initialValue: VoiceController(canvas: canvas, money: money, asker: asker, researcher: researcher, lab: lab, guide: guide, disputer: disputer, diver: diver))
     }
 
     var body: some Scene {
         Window("Grasp", id: "canvas") {
-            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, guide: guide)
+            CanvasView(model: canvas, pipeline: hands, phone: phone, paper: paper, probes: probes, voice: voice, money: money, asker: asker, lab: lab, guide: guide, tiger: tiger, videos: videos)
                 .frame(minWidth: 960, minHeight: 640)
                 .task {
                     phone.onCapture = { [paper] id, jpeg in paper.read(jpeg: jpeg, captureID: id) }
                     paper.onHighlights = { [phone] id, boxes in phone.sendHighlights(boxes, for: id) }
-                    paper.onPage = { [researcher, guide] document in
+                    paper.onPage = { [researcher, guide, tiger] document in
                         researcher.pageRead(document)
                         guide.pageRead(document)
+                        tiger.save(page: document)
                     }
+                    videos.onPage = { [tiger] document in tiger.save(page: document) }
                     hands.onHands = { [voice] hands in voice.handsChanged(hands) }
+                    // Two hands zooming into something dive into it.
+                    canvas.onZoom = { [diver] point in Task { await diver.dive(at: point) } }
+                    canvas.onCheckNotePad = { [researcher] id in Task { await researcher.checkNotePad(id) } }
                     money.isTakingCommand = { [voice] in voice.isBusy }
                     asker.onPointAt = { [phone] capture, box in phone.sendHighlights([box], for: capture) }
                     // Hovering a number on the Mac brings its page up on the phone, spot boxed.
@@ -62,6 +74,9 @@ struct GraspMacApp: App {
                     phone.start()
                     probes.start()
                     Task { await voice.start() }
+                    // Answers, checked notes, deep dives and notebooks go to Tiger Data as they appear.
+                    canvas.onResult = { [tiger] kind, pageID in tiger.save(kind, pageID: pageID) }
+                    Task { await tiger.start() }
                     scheduleSnapshotFromEnvironment()
                     await hands.start(feeding: canvas)
                 }
@@ -70,15 +85,17 @@ struct GraspMacApp: App {
         .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Read Image…") { openImage() }
+                Button("Read a Photo or Video…") { openImage() }
                     .keyboardShortcut("o")
+                Button("Study a YouTube Video…") { videos.openLinkByTyping() }
+                    .keyboardShortcut("y", modifiers: [.command, .shift])
             }
             CommandMenu("Ask") {
                 Button("Ask Anything…") { asker.askByTyping() }
                     .keyboardShortcut("k")
             }
             CommandMenu("Research") {
-                Button("Check My Notes Against the Paper…") { researcher.linkNotesByTyping() }
+                Button("Write Notes on the Page") { canvas.showNotePad() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Divider()
                 Button(lab.isRecording ? "Stop Lab Notes and Write Them Up" : "Start Lab Notes") { Task { await lab.toggle() } }
@@ -139,8 +156,14 @@ struct GraspMacApp: App {
                     .keyboardShortcut("t")
                 Button("Demo Cards") { canvas.resetLayout() }
                     .keyboardShortcut("r")
+                Button("Deep Dive (Zoom In with Both Hands)") { Task { await diver.dive() } }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
+                Button("Put Card Away (Thumbs Up)") { canvas.putAway() }
+                    .keyboardShortcut(.downArrow, modifiers: [.command])
                 Button("Delete Card in Focus") { canvas.deleteFocusedCard() }
                     .keyboardShortcut(.delete, modifiers: [])
+                    // Delete deletes text while a note is being typed.
+                    .disabled(canvas.isTyping)
                 Button("Clear Canvas") { canvas.clearCanvas() }
                     .keyboardShortcut(.delete, modifiers: [.command, .shift])
                 Button("Save Snapshot to Desktop") { _ = saveSnapshot(to: CanvasSnapshot.desktopURL) }
@@ -201,6 +224,7 @@ struct GraspMacApp: App {
                 case "method": await researcher.mapMethod()
                 case "related": await researcher.findRelatedWork()
                 case "dispute": await disputer.write()
+                case "dive": await diver.dive()
                 case let step where step.hasPrefix("hoverwork"):
                     // hoverwork2: the second paper on the related-work card.
                     let index = (Int(step.dropFirst(9)) ?? 1) - 1
@@ -246,6 +270,33 @@ struct GraspMacApp: App {
                        let fact = document.shownFacts.first(where: { document.factBoxes[$0.key] != nil }) {
                         canvas.showSource(of: .fact(document: document.id, key: fact.key))
                     }
+                case let step where step.hasPrefix("hovercatch"):
+                    // hovercatch2: the second located catch on the newest page.
+                    let index = (Int(step.dropFirst(10)) ?? 1) - 1
+                    if let document = canvas.cards.reversed().compactMap({ canvas.document(for: $0) }).first {
+                        let located = document.shownCatches.filter { document.catchBoxes[$0.title] != nil }
+                        if let item = located[safe: index] { canvas.showSource(of: .catchItem(document: document.id, title: item.title)) }
+                    }
+                case "putaway": canvas.putAway()
+                case let step where step.hasPrefix("video:"):
+                    videos.read(fileAt: URL(filePath: String(step.dropFirst(6))))
+                    try? await Task.sleep(for: .seconds(14))
+                case let step where step.hasPrefix("youtube:"):
+                    videos.read(youTube: String(step.dropFirst(8)))
+                    try? await Task.sleep(for: .seconds(25))
+                case let step where step.hasPrefix("hovermoment"):
+                    // hovermoment2: the second moment of the newest video.
+                    let index = (Int(step.dropFirst(11)) ?? 1) - 1
+                    if let document = canvas.cards.reversed().compactMap({ canvas.document(for: $0) }).first(where: { $0.video != nil }) {
+                        canvas.showSource(of: .moment(document: document.id, index: index))
+                    }
+                case let step where step.hasPrefix("note:"):
+                    // note:text adds a line to the pad beside the page in focus.
+                    canvas.showNotePad(adding: String(step.dropFirst(5)))
+                case "checknotes":
+                    if let pad = canvas.cards.last(where: { if case .notePad = $0.kind { true } else { false } }) {
+                        await researcher.checkNotePad(pad.id)
+                    }
                 case "hovertotal":
                     if let card = canvas.cards.last(where: { canvas.document(for: $0) != nil }) {
                         canvas.showSource(of: .derived(card: card.id, name: "total"))
@@ -256,6 +307,9 @@ struct GraspMacApp: App {
                 try? await Task.sleep(for: .seconds(1))
             }
             _ = saveSnapshot(to: URL(filePath: path))
+            // A snapshot run is a check, not a session: it closes once the picture is saved.
+            try? await Task.sleep(for: .seconds(1))
+            NSApp.terminate(nil)
         }
     }
 
@@ -268,9 +322,18 @@ struct GraspMacApp: App {
     /// Reads a photo from disk as if the phone had sent it.
     private func openImage() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.message = "Choose a photo of a contract, window sticker or loan quote"
+        panel.allowedContentTypes = [.image, .movie]
+        panel.message = "Choose a photo of any page, or a video to study"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        paper.read(fileAt: url)
+        Self.read(url, paper: paper, videos: videos)
+    }
+
+    /// A photo goes to the page readers, a video to the video reader.
+    static func read(_ url: URL, paper: PaperReader, videos: VideoStudy) {
+        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
+            videos.read(fileAt: url)
+        } else {
+            paper.read(fileAt: url)
+        }
     }
 }

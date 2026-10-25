@@ -99,6 +99,65 @@ struct GestureEngineTests {
         #expect(hands[0].twist < 0.6)
     }
 
+    @Test func turningAroundThePinchIsATwist() {
+        // Fingers hold the knob still while the wrist swings around them: the wrist moves a lot,
+        // the pinch hardly at all.
+        var engine = GestureEngine()
+        let pinch = CGPoint(x: center.x, y: center.y - 0.17)
+        func wrist(_ turned: Double) -> CGPoint {
+            CGPoint(x: pinch.x - cos(-.pi / 2 + turned) * 0.17, y: pinch.y - sin(-.pi / 2 + turned) * 0.17)
+        }
+        run(&engine, frames: 5) { _ in [hand(wrist: wrist(0), gap: 0.02)] }
+        let hands = run(&engine, frames: 30, from: 5) { frame in
+            let turned = min(Double(frame - 5) / 15, 1) * .pi / 4
+            return [hand(wrist: wrist(turned), angle: -.pi / 2 + turned, gap: 0.02)]
+        }
+        #expect(hands[0].pinch == .twist)
+        #expect(hands[0].twist > 0.3)
+    }
+
+    @Test func twistWithAShakyWristIsStillATwist() {
+        // The wrist jitters a few percent of the frame while the hand turns.
+        var engine = GestureEngine()
+        run(&engine, frames: 5) { _ in [hand(wrist: center, gap: 0.02)] }
+        let hands = run(&engine, frames: 30, from: 5) { frame in
+            let turned = min(Double(frame - 5) / 15, 1) * .pi / 4
+            let shake = frame % 2 == 0 ? 0.012 : -0.012
+            return [hand(wrist: CGPoint(x: center.x + shake, y: center.y - shake), angle: -.pi / 2 + turned, gap: 0.02)]
+        }
+        #expect(hands[0].pinch == .twist)
+    }
+
+    @Test func twistingWithCurledFingersNeverTalks() {
+        // A real pinch: index bent to meet the thumb (1.2 palm lengths out), the others curled.
+        var engine = GestureEngine()
+        run(&engine, frames: 5) { _ in [hand(wrist: center, gap: 0.02, fingers: 0.09, index: 0.12)] }
+        var talked = false
+        let hands = run(&engine, frames: 30, from: 5) { frame in
+            let turned = min(Double(frame - 5) / 15, 1) * .pi / 4
+            return [hand(wrist: center, angle: -.pi / 2 + turned, gap: 0.02, fingers: 0.09, index: 0.12)]
+        }
+        talked = hands[0].isFist
+        #expect(hands[0].pinch == .twist)
+        #expect(!talked)
+    }
+
+    @Test func foreshortenedPalmKeepsTheTwist() {
+        // Turning the hand tilts it, so the palm looks shorter while the fingers stay pinched.
+        var engine = GestureEngine()
+        run(&engine, frames: 5) { _ in [hand(wrist: center, gap: 0.02)] }
+        let hands = run(&engine, frames: 30, from: 5) { frame in
+            let turned = min(Double(frame - 5) / 15, 1) * .pi / 4
+            var sample = hand(wrist: center, angle: -.pi / 2 + turned, gap: 0.03)
+            // Palm shrinks from 0.1 to 0.06 seen from the camera.
+            let scale = 1 - 0.4 * min(Double(frame - 5) / 15, 1)
+            sample.joints[.middleMCP] = CGPoint(x: center.x + cos(-.pi / 2 + turned) * 0.1 * scale,
+                                                y: center.y + sin(-.pi / 2 + turned) * 0.1 * scale)
+            return [sample]
+        }
+        #expect(hands[0].pinch == .twist)
+    }
+
     @Test func counterClockwiseTwistIsNegative() {
         var engine = GestureEngine()
         run(&engine, frames: 5) { _ in [hand(wrist: center, gap: 0.02)] }
@@ -234,8 +293,65 @@ struct FistTests {
         #expect(hand?.isFist == false)
     }
 
+    @Test func closingIntoAFistStillTalks() {
+        // The thumb meets the index on the way, which starts a pinch; curling the rest ends it.
+        var engine = GestureEngine()
+        var last: TrackedHand?
+        for frame in 0..<20 {
+            let curl = min(Double(frame) / 6, 1)
+            let sample = base.hand(wrist: center, gap: 0.01, fingers: 0.16 - 0.07 * curl, index: 0.15 - 0.055 * curl)
+            last = engine.update(HandFrame(hands: [sample], time: Double(frame) / 30, aspect: 1)).first
+        }
+        #expect(last?.isFist == true)
+        #expect(last?.isPinching == false)
+    }
+
     @Test func openHandIsNotAFist() {
         let hand = run(frames: 12, base.hand(wrist: center, gap: 0.08, fingers: 0.18))
         #expect(hand?.isFist == false)
+    }
+}
+
+/// A thumbs up puts the card away; it must not read as a fist (talk) or a pinch (grab).
+struct ThumbsUpTests {
+    let center = CGPoint(x: 0.5, y: 0.6)
+
+    /// A hand side-on to the camera: fingers curled to the right of the wrist, thumb straight up.
+    var thumbsUp: HandSample {
+        let w = center
+        return HandSample(joints: [
+            .wrist: w,
+            .middleMCP: CGPoint(x: w.x + 0.1, y: w.y - 0.02),
+            .indexMCP: CGPoint(x: w.x + 0.09, y: w.y - 0.05),
+            .littleMCP: CGPoint(x: w.x + 0.08, y: w.y + 0.03),
+            .thumbMP: CGPoint(x: w.x + 0.05, y: w.y - 0.09),
+            .thumbTip: CGPoint(x: w.x + 0.06, y: w.y - 0.16),
+            .indexTip: CGPoint(x: w.x + 0.1, y: w.y - 0.01),
+            .middleTip: CGPoint(x: w.x + 0.1, y: w.y + 0.01),
+            .ringTip: CGPoint(x: w.x + 0.09, y: w.y + 0.03),
+            .littleTip: CGPoint(x: w.x + 0.08, y: w.y + 0.05),
+        ])
+    }
+
+    func frames(_ count: Int, _ sample: HandSample) -> [TrackedHand] {
+        var engine = GestureEngine()
+        return (0..<count).compactMap { frame in
+            engine.update(HandFrame(hands: [sample], time: Double(frame) / 30, aspect: 1)).first
+        }
+    }
+
+    @Test func heldThumbsUpCountsOnce() {
+        let hands = frames(30, thumbsUp)
+        #expect(hands.filter(\.thumbsUp).count == 1)
+        #expect(hands.allSatisfy { !$0.isFist && !$0.isPinching })
+    }
+
+    @Test func briefThumbsUpDoesNotCount() {
+        #expect(frames(6, thumbsUp).allSatisfy { !$0.thumbsUp })
+    }
+
+    @Test func fistIsNotAThumbsUp() {
+        let fist = GestureEngineTests().hand(wrist: center, gap: 0.01, fingers: 0.09, index: 0.095)
+        #expect(frames(30, fist).allSatisfy { !$0.thumbsUp })
     }
 }

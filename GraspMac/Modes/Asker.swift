@@ -39,7 +39,7 @@ final class Asker {
         do {
             let answer = try await QuestionAnswerer(client: client).answer(
                 question,
-                documents: documents.map { AskedDocument($0.reading, text: $0.text) } + canvas.notebookPages,
+                documents: documents.map { AskedDocument($0.reading, text: $0.text) } + canvas.notebookPages + canvas.notePadPages,
                 canvas: canvas.voiceContext,
                 earlier: conversation,
                 focus: focused.map { $0.reading.title }

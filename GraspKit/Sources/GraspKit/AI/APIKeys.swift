@@ -4,6 +4,8 @@ import Foundation
 public enum APIKeys {
     public static var gemini: String? { value(for: "GEMINI_API_KEY") }
     public static var elevenLabs: String? { value(for: "ELEVENLABS_API_KEY") }
+    /// Tiger Data (Tiger Cloud) service, as `user:password@host:port/database`.
+    public static var tigerService: PostgresAddress? { value(for: "TIGER_SERVICE").flatMap(PostgresAddress.init) }
 
     private static func value(for key: String) -> String? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }

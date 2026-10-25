@@ -3,6 +3,7 @@
 
 GEMINI_API_KEY =
 ELEVENLABS_API_KEY =
+TIGER_SERVICE =
 
 // The Mac app signs to run locally until Secrets.xcconfig sets a team.
 CODE_SIGN_IDENTITY[sdk=macosx*] = -

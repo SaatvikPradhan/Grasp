@@ -109,33 +109,29 @@ final class Researcher {
         }
     }
 
-    /// Links the newest page of notes, or asks for notes to be typed, for voice: "these are my notes".
+    /// Links the newest page of notes, or opens a pad to type them on, for voice: "these are my notes".
     func linkLatestNotes() async -> String {
         let pages = canvas.documents.values.sorted { $0.readAt > $1.readAt }
         if let notes = pages.first(where: Self.isNotes) {
             return await link(notes: notes.text.joined(separator: "\n"), from: notes)
         }
-        linkNotesByTyping()
-        return "Type or paste your notes"
+        canvas.showNotePad()
+        return "Type your notes beside the page"
     }
 
-    /// Notes typed or pasted in.
-    func linkNotesByTyping() {
-        let alert = NSAlert()
-        alert.messageText = "Your notes on the paper"
-        alert.informativeText = "One note per line. Grasp finds where each one is in the paper and checks it."
-        let scroll = NSTextView.scrollableTextView()
-        scroll.frame = NSRect(x: 0, y: 0, width: 420, height: 180)
-        let field = scroll.documentView as? NSTextView
-        field?.font = .systemFont(ofSize: 13)
-        alert.accessoryView = scroll
-        alert.addButton(withTitle: "Check My Notes")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let notes = (field?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !notes.isEmpty else { return }
-        Task { await link(notes: notes) }
+    /// Checks a note pad typed on the canvas against its page; the pad becomes the checked notes.
+    func checkNotePad(_ cardID: UUID) async {
+        guard case .notePad(let pad)? = canvas.card(cardID)?.kind, let documentID = pad.documentID,
+              let paper = canvas.documents[documentID], let client = GeminiClient.fromAppKeys else { return }
+        canvas.updateNotePad(cardID) { $0.isChecking = true }
+        isLinking = true
+        defer { isLinking = false }
+        do {
+            let linked = try await NoteLinker(client: client).link(notes: pad.lines.joined(separator: "\n"), paper: paper.text, title: paper.reading.title)
+            canvas.showNotes(NotesCard(paperID: paper.id, paperTitle: paper.reading.title, linked: linked), replacing: cardID)
+        } catch {
+            canvas.updateNotePad(cardID) { $0.isChecking = false }
+        }
     }
 
     /// The paper the notes are about: the page in focus if it isn't notes, or the newest page that isn't.

@@ -65,7 +65,11 @@ struct CardView: View {
         case .pitch(let checks):
             PitchCardView(checks: checks)
         case .document(let document):
-            DocumentCardView(cardID: card.id, document: document)
+            if let video = document.video {
+                VideoCardView(cardID: card.id, document: document, video: video)
+            } else {
+                DocumentCardView(cardID: card.id, document: document)
+            }
         case .answer(let answer):
             AnswerCardView(cardID: card.id, card: answer)
         case .notes(let notes):
@@ -82,6 +86,10 @@ struct CardView: View {
             RelatedCardView(cardID: card.id, card: related)
         case .letter(let letter):
             LetterCardView(cardID: card.id, card: letter)
+        case .deepDive(let dive):
+            DeepDiveCardView(cardID: card.id, card: dive)
+        case .notePad(let pad):
+            NotePadCardView(cardID: card.id, card: pad)
         }
     }
 
@@ -156,6 +164,8 @@ struct FoldedCardView: View {
         case .method: "point.3.connected.trianglepath.dotted"
         case .related: "books.vertical"
         case .letter: "envelope"
+        case .deepDive: "globe"
+        case .notePad: "square.and.pencil"
         case .loan: "car"
         case .comparison: "arrow.left.arrow.right"
         case .advice: "quote.bubble"
@@ -182,6 +192,8 @@ struct FoldedCardView: View {
         case .advice: "What to say"
         case .pitch: "The pitch, checked"
         case .temperatures: "Cup temperatures"
+        case .deepDive(let dive): "Deep dive: \(dive.subject.topic)"
+        case .notePad(let pad): pad.title
         }
     }
 
@@ -236,6 +248,14 @@ struct FoldedCardView: View {
             Text("\(advice.lines.count) things to ask").foregroundStyle(Theme.muted)
         case .pitch(let checks):
             Text("\(checks.count) number\(checks.count == 1 ? "" : "s") checked").foregroundStyle(Theme.muted)
+        case .deepDive(let card):
+            if let dive = card.dive {
+                Text("\(dive.findings.count) findings · \(dive.sources.count) sources").foregroundStyle(Theme.muted)
+            } else {
+                Text(card.failure == nil ? "searching the web…" : "couldn't search").foregroundStyle(Theme.muted)
+            }
+        case .notePad(let pad):
+            Text(pad.lines.first ?? "empty").foregroundStyle(Theme.muted)
         case .temperatures:
             EmptyView()
         }

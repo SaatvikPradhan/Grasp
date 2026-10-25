@@ -36,11 +36,30 @@ public struct GeminiClient: Sendable {
         APIKeys.gemini.map { GeminiClient(apiKey: $0) }
     }
 
-    /// Sends `prompt` (and `jpeg`, if any, or several `images`, each after its caption) and decodes
-    /// the JSON answer as `T`. `schema` is a Gemini response schema; its property names should be snake_case.
+    /// A video or other file to send with a prompt.
+    public enum Media: Sendable {
+        /// Small enough to go in the request (under about 15 MB).
+        case inline(Data, mimeType: String)
+        /// Uploaded first with `upload`.
+        case file(uri: String, mimeType: String)
+        /// A public YouTube video, which Gemini watches itself.
+        case youTube(URL)
+
+        var part: [String: Any] {
+            switch self {
+            case .inline(let data, let mimeType): ["inlineData": ["mimeType": mimeType, "data": data.base64EncodedString()]]
+            case .file(let uri, let mimeType): ["fileData": ["mimeType": mimeType, "fileUri": uri]]
+            case .youTube(let url): ["fileData": ["fileUri": url.absoluteString]]
+            }
+        }
+    }
+
+    /// Sends `prompt` (and `jpeg`, if any, or several `images`, each after its caption, or `media`) and
+    /// decodes the JSON answer as `T`. `schema` is a Gemini response schema; its property names should be snake_case.
     public func generate<T: Decodable>(_ type: T.Type, prompt: String, jpeg: Data? = nil,
-                                       images: [(caption: String, jpeg: Data)] = [], schema: [String: Any]) async throws -> T {
-        var parts: [[String: Any]] = []
+                                       images: [(caption: String, jpeg: Data)] = [], media: [Media] = [],
+                                       schema: [String: Any]) async throws -> T {
+        var parts: [[String: Any]] = media.map(\.part)
         if let jpeg {
             parts.append(["inlineData": ["mimeType": "image/jpeg", "data": jpeg.base64EncodedString()]])
         }
@@ -53,10 +72,12 @@ public struct GeminiClient: Sendable {
         var generation = generationConfig
         generation["responseMimeType"] = "application/json"
         generation["responseSchema"] = schema
-        let answer = try await send([
+        // Video is long: fewer tokens a frame, and more time to watch it.
+        if !media.isEmpty { generation["mediaResolution"] = "MEDIA_RESOLUTION_LOW" }
+        let answer = try JSONDecoder().decode(Answer.self, from: try await post([
             "contents": [["role": "user", "parts": parts]],
             "generationConfig": generation,
-        ])
+        ], timeout: media.isEmpty ? 30 : 240))
 
         let text = answer.parts.compactMap(\.text).joined()
         guard !text.isEmpty else { throw Failure.noAnswer(reason: answer.reason) }
@@ -77,6 +98,77 @@ public struct GeminiClient: Sendable {
             throw Failure.noAnswer(reason: answer.reason)
         }
         return FunctionCall(name: call.name, arguments: call.args ?? [:])
+    }
+
+    /// Answers `prompt` in plain text with Google Search, returning the text and which web
+    /// pages back which parts of it.
+    public func searchGrounded(_ prompt: String) async throws -> Grounded {
+        let data = try await post([
+            "contents": [["role": "user", "parts": [["text": prompt]]]],
+            "tools": [["google_search": [String: Any]()]],
+            "generationConfig": generationConfig,
+        ], timeout: 60)
+        let answer = try JSONDecoder().decode(GroundedAnswer.self, from: data)
+        let candidate = answer.candidates?.first
+        let text = (candidate?.content?.parts ?? []).compactMap(\.text).joined()
+        guard !text.isEmpty else { throw Failure.noAnswer(reason: candidate?.finishReason ?? "empty") }
+        let metadata = candidate?.groundingMetadata
+        return Grounded(
+            text: text,
+            searches: metadata?.webSearchQueries ?? [],
+            pages: (metadata?.groundingChunks ?? []).map { Grounded.Page(title: $0.web?.title ?? "", url: $0.web?.uri ?? "") },
+            supports: (metadata?.groundingSupports ?? []).compactMap { support in
+                guard let segment = support.segment?.text else { return nil }
+                return Grounded.Support(text: segment, pages: support.groundingChunkIndices ?? [])
+            }
+        )
+    }
+
+    /// Uploads a file too big to send inline (a lecture video) and waits until Gemini can use it.
+    public func upload(_ data: Data, mimeType: String, name: String) async throws -> Media {
+        var start = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files")!)
+        start.httpMethod = "POST"
+        start.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        start.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
+        start.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
+        start.setValue(String(data.count), forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
+        start.setValue(mimeType, forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
+        start.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        start.httpBody = try JSONSerialization.data(withJSONObject: ["file": ["display_name": name]])
+        let (_, started) = try await URLSession.shared.data(for: start)
+        guard let uploadURL = (started as? HTTPURLResponse)?.value(forHTTPHeaderField: "x-goog-upload-url").flatMap(URL.init) else {
+            throw Failure.http(status: (started as? HTTPURLResponse)?.statusCode ?? 0, message: "the upload didn't start")
+        }
+
+        var send = URLRequest(url: uploadURL)
+        send.httpMethod = "POST"
+        send.timeoutInterval = 600
+        send.setValue("0", forHTTPHeaderField: "X-Goog-Upload-Offset")
+        send.setValue("upload, finalize", forHTTPHeaderField: "X-Goog-Upload-Command")
+        let (body, _) = try await URLSession.shared.upload(for: send, from: data)
+        guard var file = try? JSONDecoder().decode(UploadedFile.self, from: body).file else {
+            throw Failure.http(status: 0, message: String(decoding: body.prefix(300), as: UTF8.self))
+        }
+        // A video is processed before it can be read.
+        for _ in 0..<120 where file.state == "PROCESSING" {
+            try await Task.sleep(for: .seconds(2))
+            var check = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/\(file.name)")!)
+            check.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+            let (status, _) = try await URLSession.shared.data(for: check)
+            file = try JSONDecoder().decode(UploadedFile.File.self, from: status)
+        }
+        guard file.state == "ACTIVE" else { throw Failure.noAnswer(reason: "the upload is \(file.state ?? "unknown")") }
+        return .file(uri: file.uri, mimeType: file.mimeType ?? mimeType)
+    }
+
+    private struct UploadedFile: Decodable {
+        struct File: Decodable {
+            var name: String
+            var uri: String
+            var mimeType: String?
+            var state: String?
+        }
+        var file: File
     }
 
     private var generationConfig: [String: Any] {
@@ -110,10 +202,10 @@ public struct GeminiClient: Sendable {
         try JSONDecoder().decode(Answer.self, from: try await post(body))
     }
 
-    private func post(_ body: [String: Any]) async throws -> Data {
+    private func post(_ body: [String: Any], timeout: Double = 30) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -151,9 +243,64 @@ public struct GeminiClient: Sendable {
         var reason: String { promptFeedback?.blockReason ?? candidates?.first?.finishReason ?? "empty" }
     }
 
+    private struct GroundedAnswer: Decodable {
+        struct Candidate: Decodable {
+            struct Content: Decodable {
+                struct Part: Decodable { var text: String? }
+                var parts: [Part]?
+            }
+            struct Metadata: Decodable {
+                struct Chunk: Decodable {
+                    struct Web: Decodable { var uri: String?; var title: String? }
+                    var web: Web?
+                }
+                struct Support: Decodable {
+                    struct Segment: Decodable { var text: String? }
+                    var segment: Segment?
+                    var groundingChunkIndices: [Int]?
+                }
+                var webSearchQueries: [String]?
+                var groundingChunks: [Chunk]?
+                var groundingSupports: [Support]?
+            }
+            var content: Content?
+            var finishReason: String?
+            var groundingMetadata: Metadata?
+        }
+        var candidates: [Candidate]?
+    }
+
     private struct ErrorBody: Decodable {
         struct Detail: Decodable { var message: String }
         var error: Detail
+    }
+}
+
+/// A plain-text answer written with Google Search, and the web pages behind it.
+public struct Grounded: Sendable, Equatable {
+    public struct Page: Sendable, Equatable {
+        /// Usually the site's domain, such as "consumerfinance.gov".
+        public var title: String
+        public var url: String
+    }
+
+    /// A stretch of the answer and the pages (indexes into `pages`) that back it.
+    public struct Support: Sendable, Equatable {
+        public var text: String
+        public var pages: [Int]
+    }
+
+    public var text: String
+    /// What Gemini searched for.
+    public var searches: [String]
+    public var pages: [Page]
+    public var supports: [Support]
+
+    public init(text: String, searches: [String] = [], pages: [Page] = [], supports: [Support] = []) {
+        self.text = text
+        self.searches = searches
+        self.pages = pages
+        self.supports = supports
     }
 }
 

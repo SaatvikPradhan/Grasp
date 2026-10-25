@@ -38,6 +38,12 @@ public enum VoiceCommand: Equatable, Sendable {
     case findRelatedWork
     /// "Write a dispute", "help me get my money back".
     case writeDispute
+    /// Look up what the web says about the thing pointed at.
+    case deepDive
+    /// Put the card in focus away into its group, like a thumbs up.
+    case putAway
+    /// Add a line to the notes beside the page in focus.
+    case takeNote(String)
 
     public enum StepMove: String, Sendable {
         case next, back, again
@@ -96,6 +102,9 @@ public struct VoiceCommander: Sendable {
         case "map_method": return .mapMethod
         case "find_related_work": return .findRelatedWork
         case "write_dispute": return .writeDispute
+        case "deep_dive": return .deepDive
+        case "put_away": return .putAway
+        case "take_note": return call.text("text").map { .takeNote($0) } ?? .none
         case "fit_model": return .comingSoon("fit it")
         case "export_notebook": return .saveNotebook
         case "explain": return .comingSoon("explain")
@@ -124,6 +133,10 @@ public struct VoiceCommander: Sendable {
         function("protocol_step", "During a guided experiment: the user finished a step or wants to move, for example 'done', 'next', 'okay poured', 'go back', 'say that again', 'repeat'.",
                  ["move": ["type": "STRING", "enum": ["next", "back", "again"], "description": "next when a step is done, back to go back, again to repeat it"]]),
         function("write_dispute", "Write a letter disputing the wrong charges on a bill, for example 'write a dispute', 'help me get my money back', 'complain about this bill'."),
+        function("deep_dive", "Look up what sources on the web say about the thing pointed at or the card in focus, for example 'deep dive', 'look this up', 'what do other sources say?', 'is this normal?'."),
+        function("put_away", "Put the card in focus away to the side, for example 'put it away', 'done with this', 'move this aside'."),
+        function("take_note", "Write down a note about the page, for example 'take a note: ask about the late fee', 'note that the promo ends in June', 'write down call them Monday'.",
+                 ["text": ["type": "STRING", "description": "The note itself, without 'take a note'"]]),
         function("find_related_work", "Find papers related to this one, or check whether anyone has already studied a direction, for example 'has anyone done this?'."),
         function("map_method", "Show how the paper's study was done: its method, variables, controls and what it didn't control."),
         function("finish_experiment", "Stop the experiment and write up the notes, for example 'we're done', 'stop the experiment', 'finish'."),

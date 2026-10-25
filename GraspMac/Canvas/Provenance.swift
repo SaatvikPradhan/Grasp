@@ -20,6 +20,10 @@ enum HoverTarget: Hashable {
     case cited(card: UUID, index: Int)
     /// A published paper on a related-work card.
     case work(card: UUID, index: Int)
+    /// A finding on a deep dive card, and the web pages behind it.
+    case webFinding(card: UUID, index: Int)
+    /// A moment in a video: the frame then and what's said.
+    case moment(document: UUID, index: Int)
 }
 
 /// Words on a page a card cites, with what they back up.

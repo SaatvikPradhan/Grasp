@@ -24,13 +24,14 @@ final class VoiceController {
     @ObservationIgnored private let lab: LabSession
     @ObservationIgnored private let guide: ProtocolGuide
     @ObservationIgnored private let disputer: Disputer
+    @ObservationIgnored private let diver: DeepDiver
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var clearTask: Task<Void, Never>?
     /// Listening because a hand is making a fist, so opening it sends.
     @ObservationIgnored private var talkingByFist = false
 
     init(canvas: CanvasModel, money: MoneyMode, asker: Asker, researcher: Researcher, lab: LabSession, guide: ProtocolGuide,
-         disputer: Disputer) {
+         disputer: Disputer, diver: DeepDiver) {
         self.canvas = canvas
         self.money = money
         self.asker = asker
@@ -38,6 +39,7 @@ final class VoiceController {
         self.lab = lab
         self.guide = guide
         self.disputer = disputer
+        self.diver = diver
     }
 
     /// Hearing or working out a command, so the conversation listener should ignore the words.
@@ -58,8 +60,9 @@ final class VoiceController {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             // Leave Space alone in dialogs such as the ⌘O file picker.
+            // and in a note being typed on the canvas.
             guard event.keyCode == 49, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
-                  !(event.window is NSPanel) else { return event }
+                  !(event.window is NSPanel), !((event.window?.firstResponder as? NSTextView)?.isEditable ?? false) else { return event }
             MainActor.assumeIsolated {
                 if event.type == .keyDown, !event.isARepeat {
                     self?.beginTalking()
@@ -177,6 +180,13 @@ final class VoiceController {
             return await researcher.findRelatedWork()
         case .writeDispute:
             return await disputer.write()
+        case .deepDive:
+            return await diver.dive()
+        case .putAway:
+            return canvas.putAway() ? "Put away" : "Nothing to put away"
+        case .takeNote(let text):
+            canvas.showNotePad(adding: text)
+            return "Noted"
         case .finishExperiment:
             return guide.isRunning ? await guide.finish() : await lab.stop()
         case .saveNotebook:

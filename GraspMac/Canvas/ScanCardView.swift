@@ -18,7 +18,7 @@ struct ScanCardView: View {
             case .reading:
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Reading the paper…")
+                    Text(scan.readingLabel ?? "Reading the paper…")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                 }

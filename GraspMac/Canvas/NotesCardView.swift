@@ -7,21 +7,35 @@ struct NotesCardView: View {
     let cardID: UUID
     let card: NotesCard
 
+    @Environment(CanvasModel.self) private var canvas
+
     private var notes: [LinkedNotes.Note] { card.linked.notes }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("YOUR NOTES, CHECKED AGAINST THE PAPER")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.muted)
-                Text(card.paperTitle)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                Text(tally)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.muted)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("YOUR NOTES, CHECKED AGAINST THE \(noun.uppercased())")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.muted)
+                    Text(card.paperTitle)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    Text(tally)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 8)
+                Button { canvas.editNotes(cardID) } label: {
+                    Label("Edit", systemImage: "square.and.pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().stroke(Theme.line))
+                }
+                .buttonStyle(.plain)
             }
 
             ForEach(Array(notes.enumerated()), id: \.offset) { index, note in
@@ -31,19 +45,24 @@ struct NotesCardView: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(color(note.status))
                             .frame(width: 16)
+                        // In a video, when it's said: click to play it.
+                        if let (video, seconds) = moment(of: note) {
+                            TimeChip(seconds: seconds)
+                                .onTapGesture { VideoPlayers.shared.seek(video, to: seconds) }
+                        }
                         Text(note.note)
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(1)
                         if note.status == .notInPaper {
-                            Text("not in the paper")
+                            Text("not in the \(noun)")
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.muted)
                                 .fixedSize()
                         }
                     }
                     if let says = note.paperSays {
-                        Text("Paper: \(says)")
+                        Text("\(noun.capitalized) says: \(says)")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.hot)
                             .lineLimit(1)
@@ -80,11 +99,21 @@ struct NotesCardView: View {
         }
     }
 
+    /// What the notes were checked against.
+    private var noun: String { canvas.documents[card.paperID]?.video == nil ? "page" : "video" }
+
+    /// The video and the time a note's passage is said, when the notes are on a video.
+    private func moment(of note: LinkedNotes.Note) -> (PageDocument, Double)? {
+        guard let document = canvas.documents[card.paperID], let video = document.video, let line = note.location?.line,
+              let said = video.reading.transcript[safe: line] else { return nil }
+        return (document, said.seconds)
+    }
+
     private var tally: String {
         let matching = notes.filter { $0.status == .matches }.count
         let differing = notes.filter { $0.status == .differs }.count
         let missing = notes.filter { $0.status == .notInPaper }.count
-        var parts = ["\(matching) match the paper"]
+        var parts = ["\(matching) match the \(noun)"]
         if differing > 0 { parts.append("\(differing) differ") }
         if missing > 0 { parts.append("\(missing) not in it") }
         return parts.joined(separator: " · ") + " · hover a note to see the passage"

@@ -49,9 +49,6 @@ struct LiveModelReaderTests {
     @Test(.enabled(if: TestDocumentTests.key != nil)) func readsThePapersModel() async throws {
         let lines = try TestDocumentTests.lines(Data(contentsOf: TestDocumentTests.photo("research-paper")))
         let started = Date()
-        let raw = try await GeminiClient(apiKey: TestDocumentTests.key!).generate(ModelReader.Raw.self, prompt: ModelReader.prompt(lines), schema: ModelReader.schema)
-        print("RAW \(raw.kind) start \(String(describing: raw.start)) room \(String(describing: raw.room)) eq \(raw.equationQuote ?? "-")")
-        for condition in raw.conditions ?? [] { print("  RAW \(condition.name) k \(condition.k.value) ± \(condition.plusMinus ?? -1) reported \((condition.reported ?? []).map { "\($0.kind.rawValue) \($0.at) → \($0.value)" })") }
         let model = try #require(try await ModelReader(client: GeminiClient(apiKey: TestDocumentTests.key!)).read(paper: lines))
         print("MODEL \(String(format: "%.1f", Date().timeIntervalSince(started))) s: \(model.kind) start \(model.start.value) room \(model.room?.value ?? -1) eq: \(model.equation.quote)")
         for check in model.checks {
